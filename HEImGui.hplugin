@@ -1,0 +1,12 @@
+PluginDescriptor:
+  name: HEImGui
+  description: |
+    HEImGui integrates Dear ImGui into HydraEngine, providing  
+    a user interface framework for debugging, tools, and  
+    in-engine UI development.
+  modules:
+    - HEImGui
+  plugins:
+    []
+  reloadable: false
+  enabledByDefault: true
