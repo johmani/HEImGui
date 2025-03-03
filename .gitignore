@@ -2,3 +2,6 @@
 *.vcxproj
 *.filters
 *.user
+Source/HEImGui/Embeded/spirv
+Source/HEImGui/Embeded/dxil
+Source/HEImGui/Embeded/dxbc
