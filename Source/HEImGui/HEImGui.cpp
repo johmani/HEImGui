@@ -1,5 +1,3 @@
-//#define NOMINMAX
-
 #include "HydraEngine/Base.h"
 #include <format>
 
@@ -63,8 +61,9 @@ struct ImGuiBackend
 	{
 		device = pDevice;
 
-		commandList = device->createCommandList();
-		commandList->open();
+		nvrhi::CommandListParameters clp;
+		clp.enableImmediateExecution = device->getGraphicsAPI() == nvrhi::GraphicsAPI::D3D11;
+		commandList = device->createCommandList(clp);
 
 		{
 			nvrhi::ShaderDesc vsDesc;
@@ -83,7 +82,6 @@ struct ImGuiBackend
 			HE_ASSERT(pixelShader);
 		}
 
-
 		nvrhi::VertexAttributeDesc vertexAttribLayout[] = {
 			{ "POSITION", nvrhi::Format::RG32_FLOAT,  1, 0, offsetof(ImDrawVert,pos), sizeof(ImDrawVert), false },
 			{ "TEXCOORD", nvrhi::Format::RG32_FLOAT,  1, 0, offsetof(ImDrawVert,uv),  sizeof(ImDrawVert), false },
@@ -91,9 +89,6 @@ struct ImGuiBackend
 		};
 
 		shaderAttribLayout = device->createInputLayout(vertexAttribLayout, sizeof(vertexAttribLayout) / sizeof(vertexAttribLayout[0]), vertexShader);
-
-		if (!CreateFontTexture(commandList))
-			return false;
 
 		// create PSO
 		{
@@ -138,8 +133,16 @@ struct ImGuiBackend
 			basePSODesc.bindingLayouts = { bindingLayout };
 		}
 
-		commandList->close();
-		device->executeCommandList(commandList);
+		{
+			const auto desc = nvrhi::SamplerDesc()
+				.setAllAddressModes(nvrhi::SamplerAddressMode::Wrap)
+				.setAllFilters(true);
+
+			fontSampler = device->createSampler(desc);
+
+			if (fontSampler == nullptr)
+				return false;
+		}
 
 		return true;
 	}
@@ -150,10 +153,13 @@ struct ImGuiBackend
 		const auto& io = ImGui::GetIO();
 
 		commandList->open();
-		commandList->beginMarker("ImGUI");
+		commandList->beginMarker("ImGui");
 
 		if (!UpdateGeometry(commandList))
+		{
+			commandList->close();
 			return false;
+		}
 
 		// handle DPI scaling
 		drawData->ScaleClipRects(io.DisplayFramebufferScale);
@@ -230,8 +236,6 @@ struct ImGuiBackend
 
 	void BackbufferResizing() { pso = nullptr; }
 
-private:
-
 	bool ReallocateBuffer(nvrhi::BufferHandle& buffer, size_t requiredSize, size_t reallocateSize, bool isIndexBuffer)
 	{
 		if (buffer == nullptr || size_t(buffer->getDesc().byteSize) < requiredSize)
@@ -259,56 +263,48 @@ private:
 		return true;
 	}
 
-	bool CreateFontTexture(nvrhi::ICommandList* commandList)
+	bool UpdateFontTexture()
 	{
 		ImGuiIO& io = ImGui::GetIO();
+
 		unsigned char* pixels;
 		int width, height;
 
 		io.Fonts->GetTexDataAsRGBA32(&pixels, &width, &height);
+		if (!pixels)
+			return false;
 
-		{
-			nvrhi::TextureDesc desc;
-			desc.width = width;
-			desc.height = height;
-			desc.format = nvrhi::Format::RGBA8_UNORM;
-			desc.debugName = "ImGui font texture";
+		nvrhi::TextureDesc textureDesc;
+		textureDesc.width = width;
+		textureDesc.height = height;
+		textureDesc.format = nvrhi::Format::RGBA8_UNORM;
+		textureDesc.debugName = "ImGui font texture";
 
-			fontTexture = device->createTexture(desc);
+		fontTexture = device->createTexture(textureDesc);
 
-			commandList->beginTrackingTextureState(fontTexture, nvrhi::AllSubresources, nvrhi::ResourceStates::Common);
+		if (fontTexture == nullptr)
+			return false;
 
-			if (fontTexture == nullptr)
-				return false;
+		commandList->open();
 
-			commandList->writeTexture(fontTexture, 0, 0, pixels, width * 4);
+		commandList->beginTrackingTextureState(fontTexture, nvrhi::AllSubresources, nvrhi::ResourceStates::Common);
 
-			commandList->setPermanentTextureState(fontTexture, nvrhi::ResourceStates::ShaderResource);
-			commandList->commitBarriers();
+		commandList->writeTexture(fontTexture, 0, 0, pixels, width * 4);
 
-			io.Fonts->TexID = fontTexture;
-		}
+		commandList->setPermanentTextureState(fontTexture, nvrhi::ResourceStates::ShaderResource);
+		commandList->commitBarriers();
 
-		{
-			const auto desc = nvrhi::SamplerDesc()
-				.setAllAddressModes(nvrhi::SamplerAddressMode::Wrap)
-				.setAllFilters(true);
+		commandList->close();
+		device->executeCommandList(commandList);
 
-			fontSampler = device->createSampler(desc);
-
-			if (fontSampler == nullptr)
-				return false;
-		}
+		io.Fonts->TexID = fontTexture;
 
 		return true;
 	}
 
 	nvrhi::IGraphicsPipeline* GetPSO(nvrhi::IFramebuffer* fb)
 	{
-		if (pso)
-		{
-			return pso;
-		}
+		if (pso) return pso;
 
 		pso = device->createGraphicsPipeline(basePSODesc, fb);
 		HE_ASSERT(pso);
@@ -343,14 +339,11 @@ private:
 
 		// create/resize vertex and index buffers if needed
 		if (!ReallocateBuffer(vertexBuffer, drawData->TotalVtxCount * sizeof(ImDrawVert), (drawData->TotalVtxCount + 5000) * sizeof(ImDrawVert), false))
-		{
 			return false;
-		}
+
 
 		if (!ReallocateBuffer(indexBuffer, drawData->TotalIdxCount * sizeof(ImDrawIdx), (drawData->TotalIdxCount + 5000) * sizeof(ImDrawIdx), true))
-		{
 			return false;
-		}
 
 		vtxBuffer.resize(vertexBuffer->getDesc().byteSize / sizeof(ImDrawVert));
 		idxBuffer.resize(indexBuffer->getDesc().byteSize / sizeof(ImDrawIdx));
@@ -455,26 +448,45 @@ public:
 		style.TabRounding = 4.0f;
 	}
 
+	void CreateDefultFont()
+	{
+		ImGuiIO& io = ImGui::GetIO();
+
+		auto& w = Application::GetWindow();
+		auto [sx, sy] = w.GetWindowContentScale();
+
+		float fontSize = 18.0f;
+
+		ImFontConfig config;
+		config.SizePixels = fontSize * sx;
+
+		strcpy_s(config.Name, "OpenSans-Regular");
+		config.FontDataOwnedByAtlas = false;
+		io.FontDefault = io.Fonts->AddFontFromMemoryTTF((void*)OpenSans_Regular_ttf, sizeof(OpenSans_Regular_ttf), 0, &config);
+
+		imGuiBackend.UpdateFontTexture();
+		
+		io.DisplayFramebufferScale.x = sx;
+		io.DisplayFramebufferScale.y = sy;
+
+		ImGui::GetStyle() = ImGuiStyle();
+		ImGui::GetStyle().ScaleAllSizes(sx);
+		Theme();
+	}
+
 	virtual void OnAttach() override
 	{
 		ImGui::CreateContext();
 		ImNodes::CreateContext();
+
+		auto& w = Application::GetWindow();
 
 		ImGuiIO& io = ImGui::GetIO();
 		io.ConfigFlags |= ImGuiConfigFlags_NavEnableKeyboard; // Enable Keyboard Controls
 		io.ConfigFlags |= ImGuiConfigFlags_NavEnableGamepad;  // Enable Gamepad Controls
 		io.ConfigFlags |= ImGuiConfigFlags_DockingEnable;     // Enable Docking
 		io.ConfigFlags |= ImGuiConfigFlags_ViewportsEnable;   // Enable Multi-Viewport / Platform Windows
-
-		float fontSize = 18.0f;
-
-		{
-			ImFontConfig config;
-			strcpy_s(config.Name, "OpenSans-Regular");
-			config.FontDataOwnedByAtlas = false;
-			io.FontDefault = io.Fonts->AddFontFromMemoryTTF((void*)OpenSans_Regular_ttf, sizeof(OpenSans_Regular_ttf), fontSize, &config);
-		}
-
+		
 		ImGuiStyle& style = ImGui::GetStyle();
 		if (io.ConfigFlags & ImGuiConfigFlags_ViewportsEnable)
 		{
@@ -485,11 +497,12 @@ public:
 
 		Theme();
 
-		auto& w = GetAppContext().mainWindow;
 		GLFWwindow* window = static_cast<GLFWwindow*>(w.GetWindowHandle());
 		ImGui_ImplGlfw_InitForOther(window, true);
 
 		imGuiBackend.Init(device);
+
+		CreateDefultFont();
 	}
 
 	virtual void OnDetach() override
@@ -502,7 +515,8 @@ public:
 	virtual void OnBegin(const FrameInfo& info)
 	{
 		ImGuiIO& io = ImGui::GetIO();
-		auto& w = GetAppContext().mainWindow;
+		auto& w = Application::GetWindow();
+		
 		io.DisplaySize = ImVec2((float)w.GetWidth(), (float)w.GetHeight());
 		ImGui_ImplGlfw_NewFrame();
 		ImGui::NewFrame();
@@ -524,12 +538,6 @@ public:
 		}
 	}
 
-	bool OnWindowResize(WindowResizeEvent& e)
-	{
-		imGuiBackend.BackbufferResizing();
-		return false;
-	}
-
 	virtual void OnEvent(Event& e) override
 	{
 		if (m_BlockEvents)
@@ -540,7 +548,27 @@ public:
 		}
 
 		EventDispatcher dispatcher(e);
-		dispatcher.Dispatch<WindowResizeEvent>(HE_BIND_EVENT_FN(ImGuiLayer::OnWindowResize));
+
+		dispatcher.Dispatch<WindowResizeEvent>([this](Event& e) 
+		{
+			imGuiBackend.BackbufferResizing();
+			return false;
+
+		});
+
+		dispatcher.Dispatch<WindowContentScaleEvent>([this](Event& e)
+		{
+			auto& io = ImGui::GetIO();
+			auto& w = Application::GetWindow();
+			auto [sx, sy] = w.GetWindowContentScale();
+
+			io.Fonts->Clear();
+			io.Fonts->TexID = 0;
+
+			CreateDefultFont();
+
+			return false;
+		});
 	}
 
 	void BlockEvents(bool block) { m_BlockEvents = block; }
@@ -550,14 +578,12 @@ static ImGuiLayer* g_imGuiLayer = nullptr;
 
 EXPORT void OnModuleLoaded()
 {
-	HE_TRACE("ImGui Layer: OnModuleLoaded");
 	g_imGuiLayer = new ImGuiLayer(RHI::GetDevice());
 	Application::PushOverlay(g_imGuiLayer);
 }
 
 EXPORT void OnModuleShutdown()
 {
-	HE_TRACE("ImGuiLayer: OnModuleShutdown");
 	Application::PopOverlay(g_imGuiLayer);
 	delete g_imGuiLayer;
 }
