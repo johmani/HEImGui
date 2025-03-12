@@ -2,7 +2,6 @@
 #include <format>
 
 #include <backends/imgui_impl_glfw.cpp>
-#include <extensions/imnodes/imnodes.h>
 
 #include "Embeded/fonts/OpenSans-Regular.h"
 
@@ -476,8 +475,9 @@ public:
 
 	virtual void OnAttach() override
 	{
+		HE_PROFILE_SCOPE("ImGuiLayer::OnAttach");
+
 		ImGui::CreateContext();
-		ImNodes::CreateContext();
 
 		auto& w = Application::GetWindow();
 
@@ -507,13 +507,16 @@ public:
 
 	virtual void OnDetach() override
 	{
+		HE_PROFILE_SCOPE("ImGuiLayer::OnDetach");
+
 		ImGui_ImplGlfw_Shutdown();
 		ImGui::DestroyContext();
-		ImNodes::DestroyContext();
 	}
 
 	virtual void OnBegin(const FrameInfo& info)
 	{
+		HE_PROFILE_SCOPE("ImGuiLayer::OnBegin");
+
 		ImGuiIO& io = ImGui::GetIO();
 		auto& w = Application::GetWindow();
 		
@@ -524,7 +527,7 @@ public:
 
 	virtual void OnEnd(const FrameInfo& info)
 	{
-		HE_PROFILE_SCOPE_NC("ImGuiLayer::End", HE_PROFILE_IMGUI);
+		HE_PROFILE_SCOPE_NC("ImGuiLayer::OnEnd", HE_PROFILE_IMGUI);
 
 		ImGui::Render();
 		imGuiBackend.Render(info.fb);
@@ -540,6 +543,8 @@ public:
 
 	virtual void OnEvent(Event& e) override
 	{
+		HE_PROFILE_SCOPE_NC("ImGuiLayer::OnEvent", HE_PROFILE_IMGUI);
+
 		if (m_BlockEvents)
 		{
 			ImGuiIO& io = ImGui::GetIO();

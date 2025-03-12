@@ -57,7 +57,7 @@ project "HEImGui"
             { D3D11 = true, D3D12 = true, VULKAN = true },  -- api
             "%{prj.location}/Source/Shaders",               -- sourceDir
             "%{prj.location}/Source/HEImGui/Embeded",       -- cacheDir
-            "--header --headerBlob",                        -- args
+            "--header",                                     -- args
             {}
         )  
     }
