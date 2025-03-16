@@ -20,11 +20,11 @@
 #include "Embeded/spirv/imgui_main_ps.bin.h"
 #endif
 
-import HydraEngine;
+import HE;
 import nvrhi;
 import std;
 
-using namespace HydraEngine;
+using namespace HE;
 
 #define HE_PROFILE_IMGUI 0x4300FF
 
