@@ -3,6 +3,9 @@
 
 #include <backends/imgui_impl_glfw.cpp>
 
+#include "Embeded/fonts/fa-regular-400.h"
+#include "Embeded/fonts/fa-solid-900.h"
+#include "Embeded/fonts/OpenSans-Bold.h"
 #include "Embeded/fonts/OpenSans-Regular.h"
 
 #if NVRHI_HAS_D3D11
@@ -41,7 +44,6 @@ struct ImGuiBackend
 	nvrhi::ShaderHandle pixelShader;
 	nvrhi::InputLayoutHandle shaderAttribLayout;
 
-	nvrhi::TextureHandle fontTexture;
 	nvrhi::SamplerHandle fontSampler;
 
 	nvrhi::BufferHandle vertexBuffer;
@@ -148,6 +150,10 @@ struct ImGuiBackend
 
 	bool Render(nvrhi::IFramebuffer* framebuffer)
 	{
+		for (ImTextureData* tex : ImGui::GetPlatformIO().Textures)
+			if (tex->Status != ImTextureStatus_OK)
+				UpdateTexture(tex);
+
 		ImDrawData* drawData = ImGui::GetDrawData();
 		const auto& io = ImGui::GetIO();
 
@@ -202,13 +208,15 @@ struct ImGuiBackend
 				}
 				else
 				{
-					drawState.bindings = { GetBindingSet((nvrhi::ITexture*)pCmd->TextureId) };
+					drawState.bindings = { GetBindingSet((nvrhi::ITexture*)pCmd->GetTexID())};
 					HE_ASSERT(drawState.bindings[0]);
 
-					drawState.viewport.scissorRects[0] = nvrhi::Rect(int(pCmd->ClipRect.x),
+					drawState.viewport.scissorRects[0] = nvrhi::Rect(
+						int(pCmd->ClipRect.x),
 						int(pCmd->ClipRect.z),
 						int(pCmd->ClipRect.y),
-						int(pCmd->ClipRect.w));
+						int(pCmd->ClipRect.w)
+					);
 
 					nvrhi::DrawArguments drawArguments;
 					drawArguments.vertexCount = pCmd->ElemCount;
@@ -262,43 +270,111 @@ struct ImGuiBackend
 		return true;
 	}
 
-	bool UpdateFontTexture()
+	void UpdateTextureRegion(
+		nvrhi::ICommandList* commandList,
+		nvrhi::ITexture* texture,
+		uint32_t x, uint32_t y, uint32_t w, uint32_t h,
+		uint8_t* bytes
+	)
 	{
-		ImGuiIO& io = ImGui::GetIO();
+		size_t outRowPitch = 0;
+		nvrhi::TextureSlice desTc = {
+			.x = x,
+			.y = y,
+			.width = w,
+			.height = h,
+		};
 
-		unsigned char* pixels;
-		int width, height;
+		nvrhi::TextureSlice srcTc = {
+			.width = w,
+			.height = h,
+		};
+	
+		auto desc = texture->getDesc();
+		desc.debugName = "StagingTexture";
+		desc.width = w;
+		desc.height = h;
+	
+		nvrhi::StagingTextureHandle stagingTexture = device->createStagingTexture(desc, nvrhi::CpuAccessMode::Write);
+		
+		uint8_t* mapped = (uint8_t*)device->mapStagingTexture(stagingTexture, srcTc, nvrhi::CpuAccessMode::Write, &outRowPitch);
+		
+		for (uint32_t row = 0; row < h; ++row)
+		{
+			std::memcpy(
+				mapped + row * outRowPitch,
+				bytes + (row * (texture->getDesc().width) * 4),
+				outRowPitch
+			);
+		}
+		device->unmapStagingTexture(stagingTexture);
 
-		io.Fonts->GetTexDataAsRGBA32(&pixels, &width, &height);
-		if (!pixels)
-			return false;
+		commandList->copyTexture(texture, desTc, stagingTexture, srcTc);
+	}
 
-		nvrhi::TextureDesc textureDesc;
-		textureDesc.width = width;
-		textureDesc.height = height;
-		textureDesc.format = nvrhi::Format::RGBA8_UNORM;
-		textureDesc.debugName = "ImGui font texture";
+	void UpdateTexture(ImTextureData* tex)
+	{
+		if (tex->Status == ImTextureStatus_WantCreate)
+		{
+			HE_ASSERT(tex->TexID == 0 && tex->BackendUserData == nullptr);
+			HE_ASSERT(tex->Format == ImTextureFormat_RGBA32);
 
-		fontTexture = device->createTexture(textureDesc);
+			const void* pixels = tex->GetPixels();
+			
+			nvrhi::TextureDesc textureDesc;
+			textureDesc.width = tex->Width;
+			textureDesc.height = tex->Height;
+			textureDesc.format = nvrhi::Format::RGBA8_UNORM;
+			textureDesc.isUAV = true;
+			textureDesc.initialState = nvrhi::ResourceStates::ShaderResource;
+			textureDesc.keepInitialState = true;
+			textureDesc.debugName = "ImGui font texture";
 
-		if (fontTexture == nullptr)
-			return false;
+			nvrhi::ITexture* texture = device->createTexture(textureDesc).Detach();
+			HE_ASSERT(texture);
 
-		commandList->open();
+			auto cl = device->createCommandList();
+			cl->open();
+			cl->writeTexture(texture, 0, 0, pixels, tex->Width * 4);
+			cl->close();
+			device->executeCommandList(cl);
 
-		commandList->beginTrackingTextureState(fontTexture, nvrhi::AllSubresources, nvrhi::ResourceStates::Common);
+			tex->SetTexID(texture);
+			tex->Status = ImTextureStatus_OK;
 
-		commandList->writeTexture(fontTexture, 0, 0, pixels, width * 4);
+			//HE_INFO("[ImGui] : ImTextureStatus_WantCreate : ({}, {}, {}), {}", tex->UniqueID, tex->Width, tex->Height, (uint64_t)(nvrhi::ITexture*)tex->GetTexID());
+		}
 
-		commandList->setPermanentTextureState(fontTexture, nvrhi::ResourceStates::ShaderResource);
-		commandList->commitBarriers();
+		if (tex->Status == ImTextureStatus_WantUpdates || tex->Status == ImTextureStatus_WantCreate)
+		{
+			//HE_TRACE("[ImGui] : ImTextureStatus_WantUpdates : ({}, {}, {}), {}", tex->UniqueID, tex->Width, tex->Height, (uint64_t)(nvrhi::ITexture*)tex->GetTexID());
+			nvrhi::ITexture* texture = (nvrhi::ITexture*)tex->TexID;
+			HE_ASSERT(texture);
+			
+			auto cl = device->createCommandList();
+			cl->open();
+			
+			const int upload_x = (tex->Status == ImTextureStatus_WantCreate) ? 0 : tex->UpdateRect.x;
+			const int upload_y = (tex->Status == ImTextureStatus_WantCreate) ? 0 : tex->UpdateRect.y;
+			const int upload_w = (tex->Status == ImTextureStatus_WantCreate) ? tex->Width : tex->UpdateRect.w;
+			const int upload_h = (tex->Status == ImTextureStatus_WantCreate) ? tex->Height : tex->UpdateRect.h;
+			UpdateTextureRegion(cl, texture, upload_x, upload_y, upload_w, upload_h, tex->GetPixelsAt(upload_x, upload_y));
+			
+			cl->close();
+			device->executeCommandList(cl);
+			tex->Status = ImTextureStatus_OK;
+		}
 
-		commandList->close();
-		device->executeCommandList(commandList);
+		if (tex->Status == ImTextureStatus_WantDestroy)
+		{
+			//HE_ERROR("[ImGui] : ImTextureStatus_WantDestroy : ({}, {}, {}), {}", tex->UniqueID, tex->Width, tex->Height, (uint64_t)(nvrhi::ITexture*)tex->GetTexID());
 
-		io.Fonts->TexID = fontTexture;
+			nvrhi::TextureHandle texture;
+			texture.Attach((nvrhi::ITexture*)tex->GetTexID());
 
-		return true;
+			tex->SetTexID(ImTextureID_Invalid);
+			tex->Status = ImTextureStatus_Destroyed;
+		}
 	}
 
 	nvrhi::IGraphicsPipeline* GetPSO(nvrhi::IFramebuffer* fb)
@@ -324,8 +400,7 @@ struct ImGuiBackend
 			nvrhi::BindingSetItem::Sampler(0, fontSampler)
 		};
 
-		nvrhi::BindingSetHandle binding;
-		binding = device->createBindingSet(desc, bindingLayout);
+		nvrhi::BindingSetHandle binding = device->createBindingSet(desc, bindingLayout);
 		HE_ASSERT(binding);
 
 		bindingsCache[texture] = binding;
@@ -387,56 +462,49 @@ public:
 		ImGuiStyle& style = ImGui::GetStyle();
 		ImVec4* colors = style.Colors;
 
-		colors[ImGuiCol_Text] = ImVec4(1.000f, 1.000f, 1.000f, 1.000f);
-		colors[ImGuiCol_TextDisabled] = ImVec4(0.500f, 0.500f, 0.500f, 1.000f);
-		colors[ImGuiCol_WindowBg] = ImVec4(0.090f, 0.090f, 0.090f, 1.000f);
-		colors[ImGuiCol_ChildBg] = ImVec4(0.150f, 0.150f, 0.150f, 1.000f);
-		colors[ImGuiCol_PopupBg] = ImVec4(0.110f, 0.110f, 0.110f, 1.000f);
-		colors[ImGuiCol_Border] = ImVec4(0.200f, 0.200f, 0.200f, 1.000f);
-		colors[ImGuiCol_BorderShadow] = ImVec4(0.000f, 0.000f, 0.000f, 0.000f);
-		colors[ImGuiCol_FrameBg] = ImVec4(0.200f, 0.200f, 0.200f, 1.000f);
-		colors[ImGuiCol_FrameBgHovered] = ImVec4(0.250f, 0.250f, 0.250f, 1.000f);
-		colors[ImGuiCol_FrameBgActive] = ImVec4(0.300f, 0.300f, 0.300f, 1.000f);
-		colors[ImGuiCol_TitleBg] = ImVec4(0.090f, 0.090f, 0.090f, 1.000f);
-		colors[ImGuiCol_TitleBgActive] = ImVec4(0.150f, 0.150f, 0.150f, 1.000f);
-		colors[ImGuiCol_TitleBgCollapsed] = ImVec4(0.050f, 0.050f, 0.050f, 1.000f);
-		colors[ImGuiCol_MenuBarBg] = ImVec4(0.100f, 0.100f, 0.100f, 1.000f);
-		colors[ImGuiCol_ScrollbarBg] = ImVec4(0.090f, 0.090f, 0.090f, 1.000f);
-		colors[ImGuiCol_ScrollbarGrab] = ImVec4(0.200f, 0.200f, 0.200f, 1.000f);
-		colors[ImGuiCol_ScrollbarGrabHovered] = ImVec4(0.250f, 0.250f, 0.250f, 1.000f);
-		colors[ImGuiCol_ScrollbarGrabActive] = ImVec4(0.300f, 0.300f, 0.300f, 1.000f);
-		colors[ImGuiCol_CheckMark] = ImVec4(0.500f, 1.000f, 0.500f, 1.000f);
-		colors[ImGuiCol_SliderGrab] = ImVec4(0.400f, 0.400f, 0.400f, 1.000f);
-		colors[ImGuiCol_SliderGrabActive] = ImVec4(0.600f, 0.600f, 0.600f, 1.000f);
-		colors[ImGuiCol_Button] = ImVec4(0.150f, 0.150f, 0.150f, 1.000f);
-		colors[ImGuiCol_ButtonHovered] = ImVec4(0.200f, 0.200f, 0.200f, 1.000f);
-		colors[ImGuiCol_ButtonActive] = ImVec4(0.250f, 0.250f, 0.250f, 1.000f);
-		colors[ImGuiCol_Header] = ImVec4(0.200f, 0.200f, 0.200f, 1.000f);
-		colors[ImGuiCol_HeaderHovered] = ImVec4(0.250f, 0.250f, 0.250f, 1.000f);
-		colors[ImGuiCol_HeaderActive] = ImVec4(0.300f, 0.300f, 0.300f, 1.000f);
-		colors[ImGuiCol_Separator] = ImVec4(0.200f, 0.200f, 0.200f, 1.000f);
-		colors[ImGuiCol_SeparatorHovered] = ImVec4(0.250f, 0.250f, 0.250f, 1.000f);
-		colors[ImGuiCol_SeparatorActive] = ImVec4(0.300f, 0.300f, 0.300f, 1.000f);
-		colors[ImGuiCol_ResizeGrip] = ImVec4(0.200f, 0.200f, 0.200f, 1.000f);
-		colors[ImGuiCol_ResizeGripHovered] = ImVec4(0.250f, 0.250f, 0.250f, 1.000f);
-		colors[ImGuiCol_ResizeGripActive] = ImVec4(0.300f, 0.300f, 0.300f, 1.000f);
-		colors[ImGuiCol_Tab] = ImVec4(0.150f, 0.150f, 0.150f, 1.000f);
-		colors[ImGuiCol_TabHovered] = ImVec4(0.200f, 0.200f, 0.200f, 1.000f);
-		colors[ImGuiCol_TabActive] = ImVec4(0.250f, 0.250f, 0.250f, 1.000f);
-		colors[ImGuiCol_TabUnfocused] = ImVec4(0.100f, 0.100f, 0.100f, 1.000f);
-		colors[ImGuiCol_TabUnfocusedActive] = ImVec4(0.150f, 0.150f, 0.150f, 1.000f);
-		colors[ImGuiCol_DockingPreview] = ImVec4(0.500f, 0.500f, 1.000f, 0.500f);
-		colors[ImGuiCol_DockingEmptyBg] = ImVec4(0.100f, 0.100f, 0.100f, 1.000f);
-		colors[ImGuiCol_PlotLines] = ImVec4(1.000f, 1.000f, 1.000f, 1.000f);
-		colors[ImGuiCol_PlotLinesHovered] = ImVec4(1.000f, 0.500f, 0.500f, 1.000f);
-		colors[ImGuiCol_PlotHistogram] = ImVec4(1.000f, 1.000f, 0.000f, 1.000f);
-		colors[ImGuiCol_PlotHistogramHovered] = ImVec4(1.000f, 0.500f, 0.000f, 1.000f);
-		colors[ImGuiCol_TextSelectedBg] = ImVec4(0.500f, 1.000f, 0.500f, 0.500f);
-		colors[ImGuiCol_DragDropTarget] = ImVec4(1.000f, 1.000f, 0.000f, 1.000f);
-		colors[ImGuiCol_NavHighlight] = ImVec4(0.500f, 0.500f, 1.000f, 1.000f);
-		colors[ImGuiCol_NavWindowingHighlight] = ImVec4(1.000f, 1.000f, 1.000f, 1.000f);
-		colors[ImGuiCol_NavWindowingDimBg] = ImVec4(0.000f, 0.000f, 0.000f, 0.500f);
-		colors[ImGuiCol_ModalWindowDimBg] = ImVec4(0.000f, 0.000f, 0.000f, 0.500f);
+		ImVec4 green = ImVec4(0.4f, 0.8f, 0.4f, 0.6f);
+
+		colors[ImGuiCol_Text] = ImVec4(1, 1, 1, 1);
+		colors[ImGuiCol_TextDisabled] = ImVec4(0.5f, 0.5f, 0.5f, 1);
+		colors[ImGuiCol_WindowBg] = ImVec4(0.0f, 0.0f, 0.0f, 1);
+		colors[ImGuiCol_ChildBg] = ImVec4(0.15f, 0.15f, 0.15f, 1);
+		colors[ImGuiCol_PopupBg] = ImVec4(0.094f, 0.094f, 0.094f, 1);
+		colors[ImGuiCol_Border] = ImVec4(0.069f, 0.069f, 0.069f, 1);
+		colors[ImGuiCol_BorderShadow] = ImVec4(0, 0, 0, 0);
+		colors[ImGuiCol_FrameBg] = ImVec4(0.329f, 0.329f, 0.329f, 1);
+		colors[ImGuiCol_FrameBgHovered] = ImVec4(0.3f, 0.305f, 0.31f, 1);
+		colors[ImGuiCol_FrameBgActive] = ImVec4(0.15f, 0.1505f, 0.151f, 1);
+		colors[ImGuiCol_TitleBg] = ImVec4(0.098f, 0.098f, 0.098f, 1);
+		colors[ImGuiCol_TitleBgActive] = ImVec4(0.098f, 0.098f, 0.098f, 1);
+		colors[ImGuiCol_TitleBgCollapsed] = ImVec4(0.15f, 0.1505f, 0.151f, 1);
+		colors[ImGuiCol_MenuBarBg] = ImVec4(0.157f, 0.157f, 0.157f, 1);
+		colors[ImGuiCol_ScrollbarBg] = ImVec4(0.239f, 0.239f, 0.239f, 1);
+		colors[ImGuiCol_ScrollbarGrab] = ImVec4(0.31f, 0.31f, 0.31f, 1);
+		colors[ImGuiCol_ScrollbarGrabHovered] = ImVec4(0.41f, 0.41f, 0.41f, 1);
+		colors[ImGuiCol_ScrollbarGrabActive] = ImVec4(0.51f, 0.51f, 0.51f, 1);
+		colors[ImGuiCol_CheckMark] = green;
+		colors[ImGuiCol_SliderGrab] = green;
+		colors[ImGuiCol_SliderGrabActive] = green;
+		colors[ImGuiCol_Button] = ImVec4(0.329f, 0.329f, 0.329f, 1);
+		colors[ImGuiCol_ButtonHovered] = ImVec4(0.429f, 0.429f, 0.429f, 1);
+		colors[ImGuiCol_ButtonActive] = green;
+		colors[ImGuiCol_Header] = green;
+		colors[ImGuiCol_HeaderHovered] = green;
+		colors[ImGuiCol_HeaderActive] = green;
+		colors[ImGuiCol_Separator] = ImVec4(0.43f, 0.43f, 0.5f, 0.5f);
+		colors[ImGuiCol_SeparatorHovered] = green;
+		colors[ImGuiCol_SeparatorActive] = green;
+		colors[ImGuiCol_ResizeGrip] = green;
+		colors[ImGuiCol_ResizeGripHovered] = green;
+		colors[ImGuiCol_ResizeGripActive] = green;
+		colors[ImGuiCol_Tab] = ImVec4(0.15f, 0.1505f, 0.151f, 1);
+		colors[ImGuiCol_TabHovered] = ImVec4(0.38f, 0.38f, 0.381f, 1);
+		colors[ImGuiCol_TabActive] = ImVec4(0.28f, 0.28f, 0.281f, 1);
+		colors[ImGuiCol_TabUnfocused] = colors[ImGuiCol_Tab];
+		colors[ImGuiCol_TabUnfocusedActive] = ImVec4(0.2f, 0.205f, 0.21f, 1);
+		colors[ImGuiCol_DockingPreview] = green;
+		colors[ImGuiCol_DockingEmptyBg] = ImVec4(0.094f, 0.094f, 0.094f, 0.82f);
+		colors[ImGuiCol_TextSelectedBg] = green;
 
 		style.WindowRounding = 4.0f;
 		style.ChildRounding = 4.0f;
@@ -445,25 +513,55 @@ public:
 		style.ScrollbarRounding = 4.0f;
 		style.GrabRounding = 4.0f;
 		style.TabRounding = 4.0f;
+		style.HoverStationaryDelay = 0.7f;
 	}
 
 	void CreateDefultFont()
 	{
 		ImGuiIO& io = ImGui::GetIO();
-
+		
 		auto& w = Application::GetWindow();
 		auto [sx, sy] = w.GetWindowContentScale();
 
-		float fontSize = 18.0f;
+		{
+			float fontSize = 16.0f;
 
-		ImFontConfig config;
-		config.SizePixels = fontSize * sx;
+			const ImWchar min_fa = 0xe005;
+			const ImWchar max_fa = 0xf8ff;
 
-		strcpy_s(config.Name, "OpenSans-Regular");
-		config.FontDataOwnedByAtlas = false;
-		io.FontDefault = io.Fonts->AddFontFromMemoryTTF((void*)OpenSans_Regular_ttf, sizeof(OpenSans_Regular_ttf), 0, &config);
+			{
+				ImFontConfig config;
+				
+				config.FontDataOwnedByAtlas = false;
+				config.SizePixels = fontSize * sx;
+				strcpy_s(config.Name, "OpenSans-Regular + icons");
+				io.FontDefault = io.Fonts->AddFontFromMemoryCompressedTTF((void*)OpenSans_Regular_compressed_data, OpenSans_Regular_compressed_size, 0, &config);
 
-		imGuiBackend.UpdateFontTexture();
+				{
+					// Icons Fonts
+					config.MergeMode = true;
+					config.GlyphMinAdvanceX = 13.0f;
+					const ImWchar icon_ranges[] = { min_fa, max_fa, 0 };
+					io.Fonts->AddFontFromMemoryCompressedTTF((void*)fa_regular_400_compressed_data, fa_regular_400_compressed_size, 0, &config, icon_ranges);
+					io.Fonts->AddFontFromMemoryCompressedTTF((void*)fa_solid_900_compressed_data, fa_solid_900_compressed_size, 0, &config, icon_ranges);
+				}
+			}
+
+			{
+				ImFontConfig config;
+				config.FontDataOwnedByAtlas = false;
+				config.SizePixels = fontSize * sx;
+				strcpy_s(config.Name, "OpenSans-Bold");
+				io.Fonts->AddFontFromMemoryCompressedTTF((void*)OpenSans_Bold_compressed_data, OpenSans_Bold_compressed_size, 0, &config);
+
+				// Icons Fonts
+				config.MergeMode = true;
+				config.GlyphMinAdvanceX = 13.0f;
+				const ImWchar icon_ranges[] = { min_fa, max_fa, 0 };
+				io.Fonts->AddFontFromMemoryCompressedTTF((void*)fa_regular_400_compressed_data, fa_regular_400_compressed_size, 0, &config, icon_ranges);
+				io.Fonts->AddFontFromMemoryCompressedTTF((void*)fa_solid_900_compressed_data, fa_solid_900_compressed_size, 0, &config, icon_ranges);
+			}
+		}
 		
 		io.DisplayFramebufferScale.x = sx;
 		io.DisplayFramebufferScale.y = sy;
@@ -482,18 +580,11 @@ public:
 		auto& w = Application::GetWindow();
 
 		ImGuiIO& io = ImGui::GetIO();
-		io.ConfigFlags |= ImGuiConfigFlags_NavEnableKeyboard; // Enable Keyboard Controls
-		io.ConfigFlags |= ImGuiConfigFlags_NavEnableGamepad;  // Enable Gamepad Controls
-		io.ConfigFlags |= ImGuiConfigFlags_DockingEnable;     // Enable Docking
-		io.ConfigFlags |= ImGuiConfigFlags_ViewportsEnable;   // Enable Multi-Viewport / Platform Windows
-		
-		ImGuiStyle& style = ImGui::GetStyle();
-		if (io.ConfigFlags & ImGuiConfigFlags_ViewportsEnable)
-		{
-			style.WindowRounding = 0.0f;
-			style.Colors[ImGuiCol_WindowBg].w = 1.0f;
-			style.HoverStationaryDelay = 0.7f;
-		}
+		io.ConfigFlags |= ImGuiConfigFlags_NavEnableKeyboard;
+		io.ConfigFlags |= ImGuiConfigFlags_NavEnableGamepad; 
+		io.ConfigFlags |= ImGuiConfigFlags_DockingEnable;    
+		io.ConfigFlags |= ImGuiConfigFlags_ViewportsEnable;  
+		io.BackendFlags |= ImGuiBackendFlags_RendererHasTextures;
 
 		Theme();
 
@@ -508,6 +599,15 @@ public:
 	virtual void OnDetach() override
 	{
 		HE_PROFILE_SCOPE("ImGuiLayer::OnDetach");
+
+		for (ImTextureData* tex : ImGui::GetPlatformIO().Textures)
+		{
+			if (tex->RefCount == 1)
+			{
+				tex->Status = ImTextureStatus_WantDestroy;
+				imGuiBackend.UpdateTexture(tex);
+			}
+		}
 
 		ImGui_ImplGlfw_Shutdown();
 		ImGui::DestroyContext();
@@ -558,18 +658,10 @@ public:
 		{
 			imGuiBackend.BackbufferResizing();
 			return false;
-
 		});
 
 		dispatcher.Dispatch<WindowContentScaleEvent>([this](Event& e)
 		{
-			auto& io = ImGui::GetIO();
-			auto& w = Application::GetWindow();
-			auto [sx, sy] = w.GetWindowContentScale();
-
-			io.Fonts->Clear();
-			io.Fonts->TexID = 0;
-
 			CreateDefultFont();
 
 			return false;

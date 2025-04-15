@@ -52,18 +52,17 @@ project "HEImGui"
         AddCppm("nvrhi")
     }
 
-    prebuildcommands { 
-        BuildShaders(
-            { D3D11 = true, D3D12 = true, VULKAN = true },  -- api
-            "%{prj.location}/Source/Shaders",               -- sourceDir
-            "%{prj.location}/Source/HEImGui/Embeded",       -- cacheDir
-            "--header",                                     -- args
-            {}
-        )  
-    }
-
-    filter { 'files:**.hlsl' }
-         buildaction 'ExcludeFromBuild'
+     filter { "files:**.hlsl" }
+        buildcommands {
+            BuildShaders(
+                { D3D11 = true, D3D12 = true, VULKAN = true },  -- api
+                "%{prj.location}/Source/Shaders",               -- sourceDir
+                "%{prj.location}/Source/HEImGui/Embeded",       -- cacheDir
+                "--header",                                     -- args
+                {}
+            ),
+        }
+        buildoutputs { "%{wks.location}/dumy" }
     filter {}
     
     filter "system:windows"
