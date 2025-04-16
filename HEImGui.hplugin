@@ -1,7 +1,7 @@
 {
   "name": "HEImGui",
   "description": "HEImGui integrates Dear ImGui into HydraEngine, providing a user interface framework for debugging, tools, and in-engine UI development.",
-  "URL": "https://github.com/johmani/HEImGui.git",
+  "URL": "https://github.com/johmani/HEImGui",
   "modules": ["HEImGui"],
   "plugins": [],
   "reloadable": false,
