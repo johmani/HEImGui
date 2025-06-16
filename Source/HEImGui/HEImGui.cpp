@@ -59,8 +59,16 @@ struct ImGuiBackend
     std::vector<ImDrawVert> vtxBuffer;
     std::vector<ImDrawIdx> idxBuffer;
 
+    struct PushConstants
+    {
+        ImVec2 scale;
+        ImVec2 translate;
+    };
+
     bool Init(nvrhi::DeviceHandle pDevice)
     {
+        HE_PROFILE_SCOPE_COLOR(HE_PROFILE_IMGUI);
+
         device = pDevice;
 
         nvrhi::CommandListParameters clp;
@@ -68,6 +76,8 @@ struct ImGuiBackend
         commandList = device->createCommandList(clp);
 
         {
+            HE_PROFILE_SCOPE_NC("Create Shaders", HE_PROFILE_IMGUI);
+
             nvrhi::ShaderDesc vsDesc;
             vsDesc.shaderType = nvrhi::ShaderType::Vertex;
             vsDesc.debugName = "imgui_vs";
@@ -84,16 +94,21 @@ struct ImGuiBackend
             HE_ASSERT(pixelShader);
         }
 
-        nvrhi::VertexAttributeDesc vertexAttribLayout[] = {
-            { "POSITION", nvrhi::Format::RG32_FLOAT,  1, 0, offsetof(ImDrawVert,pos), sizeof(ImDrawVert), false },
-            { "TEXCOORD", nvrhi::Format::RG32_FLOAT,  1, 0, offsetof(ImDrawVert,uv),  sizeof(ImDrawVert), false },
-            { "COLOR",    nvrhi::Format::RGBA8_UNORM, 1, 0, offsetof(ImDrawVert,col), sizeof(ImDrawVert), false },
-        };
-
-        shaderAttribLayout = device->createInputLayout(vertexAttribLayout, sizeof(vertexAttribLayout) / sizeof(vertexAttribLayout[0]), vertexShader);
-
-        // create PSO
         {
+            HE_PROFILE_SCOPE_NC("Create Input Layout", HE_PROFILE_IMGUI);
+
+            nvrhi::VertexAttributeDesc vertexAttribLayout[] = {
+                { "POSITION", nvrhi::Format::RG32_FLOAT,  1, 0, offsetof(ImDrawVert,pos), sizeof(ImDrawVert), false },
+                { "TEXCOORD", nvrhi::Format::RG32_FLOAT,  1, 0, offsetof(ImDrawVert,uv),  sizeof(ImDrawVert), false },
+                { "COLOR",    nvrhi::Format::RGBA8_UNORM, 1, 0, offsetof(ImDrawVert,col), sizeof(ImDrawVert), false },
+            };
+
+            shaderAttribLayout = device->createInputLayout(vertexAttribLayout, sizeof(vertexAttribLayout) / sizeof(vertexAttribLayout[0]), vertexShader);
+        }
+
+        {
+            HE_PROFILE_SCOPE_NC("CreateBindingLayout and set PSO desc", HE_PROFILE_IMGUI);
+
             nvrhi::BlendState blendState;
             blendState.targets[0].setBlendEnable(true)
                 .setSrcBlend(nvrhi::BlendFactor::SrcAlpha)
@@ -121,7 +136,7 @@ struct ImGuiBackend
             nvrhi::BindingLayoutDesc layoutDesc;
             layoutDesc.visibility = nvrhi::ShaderType::All;
             layoutDesc.bindings = {
-                nvrhi::BindingLayoutItem::PushConstants(0, sizeof(float) * 2),
+                nvrhi::BindingLayoutItem::PushConstants(0, sizeof(PushConstants)),
                 nvrhi::BindingLayoutItem::Texture_SRV(0),
                 nvrhi::BindingLayoutItem::Sampler(0)
             };
@@ -136,6 +151,8 @@ struct ImGuiBackend
         }
 
         {
+            HE_PROFILE_SCOPE("Create Sampler");
+
             const auto desc = nvrhi::SamplerDesc()
                 .setAllAddressModes(nvrhi::SamplerAddressMode::Wrap)
                 .setAllFilters(true);
@@ -149,38 +166,42 @@ struct ImGuiBackend
         return true;
     }
 
-    bool Render(nvrhi::IFramebuffer* framebuffer)
+    bool Render(ImDrawData* drawData, nvrhi::IFramebuffer* framebuffer)
     {
+        HE_PROFILE_SCOPE_COLOR(HE_PROFILE_IMGUI);
+
+        HE_ASSERT(framebuffer);
+
         for (ImTextureData* tex : ImGui::GetPlatformIO().Textures)
             if (tex->Status != ImTextureStatus_OK)
                 UpdateTexture(tex);
 
-        ImDrawData* drawData = ImGui::GetDrawData();
-        const auto& io = ImGui::GetIO();
+        float fbWidth = (float)(drawData->DisplaySize.x * drawData->FramebufferScale.x);
+        float fbHeight = (float)(drawData->DisplaySize.y * drawData->FramebufferScale.y);
 
         commandList->open();
         commandList->beginMarker("ImGui");
 
-        if (!UpdateGeometry(commandList))
+        if (!UpdateGeometry(drawData, commandList))
         {
             commandList->close();
             return false;
         }
 
         // handle DPI scaling
-        drawData->ScaleClipRects(io.DisplayFramebufferScale);
+        drawData->ScaleClipRects(drawData->FramebufferScale);
 
-        float invDisplaySize[2] = { 1.f / io.DisplaySize.x, 1.f / io.DisplaySize.y };
-
+        PushConstants pushConstants;
+        pushConstants.scale.x = 2 / drawData->DisplaySize.x;
+        pushConstants.scale.y = 2 / drawData->DisplaySize.y;
+        pushConstants.translate.x = -1 - drawData->DisplayPos.x * pushConstants.scale.x;
+        pushConstants.translate.y = -1 - drawData->DisplayPos.y * pushConstants.scale.y;
+        
         // set up graphics state
         nvrhi::GraphicsState drawState;
-
         drawState.framebuffer = framebuffer;
-        HE_ASSERT(drawState.framebuffer);
-
         drawState.pipeline = GetPSO(drawState.framebuffer);
-
-        drawState.viewport.viewports.push_back(nvrhi::Viewport(io.DisplaySize.x * io.DisplayFramebufferScale.x, io.DisplaySize.y * io.DisplayFramebufferScale.y));
+        drawState.viewport.viewports.push_back(nvrhi::Viewport(fbWidth, fbHeight));
         drawState.viewport.scissorRects.resize(1);  // updated below
 
         nvrhi::VertexBufferBinding vbufBinding;
@@ -192,6 +213,10 @@ struct ImGuiBackend
         drawState.indexBuffer.buffer = indexBuffer;
         drawState.indexBuffer.format = (sizeof(ImDrawIdx) == 2 ? nvrhi::Format::R16_UINT : nvrhi::Format::R32_UINT);
         drawState.indexBuffer.offset = 0;
+
+        // Will project scissor/clipping rectangles into framebuffer space
+        ImVec2 clipOff = drawData->DisplayPos;         // (0,0) unless using multi-viewports
+        ImVec2 clipScale = drawData->FramebufferScale; // (1,1) unless using retina display which are often (2,2)
 
         // render command lists
         int vtxOffset = 0;
@@ -209,29 +234,32 @@ struct ImGuiBackend
                 }
                 else
                 {
-                    drawState.bindings = { GetBindingSet((nvrhi::ITexture*)pCmd->GetTexID()) };
+                    drawState.bindings = { GetBindingSet((nvrhi::ITexture*)pCmd->GetTexID())};
                     HE_ASSERT(drawState.bindings[0]);
 
-                    drawState.viewport.scissorRects[0] = nvrhi::Rect(
-                        int(pCmd->ClipRect.x),
-                        int(pCmd->ClipRect.z),
-                        int(pCmd->ClipRect.y),
-                        int(pCmd->ClipRect.w)
-                    );
+                    ImVec2 clipMin((pCmd->ClipRect.x - clipOff.x) * clipScale.x, (pCmd->ClipRect.y - clipOff.y) * clipScale.y);
+                    ImVec2 clipMax((pCmd->ClipRect.z - clipOff.x) * clipScale.x, (pCmd->ClipRect.w - clipOff.y) * clipScale.y);
+
+                    if (clipMin.x < 0.0f) { clipMin.x = 0.0f; }
+                    if (clipMin.y < 0.0f) { clipMin.y = 0.0f; }
+                    if (clipMax.x > fbWidth) { clipMax.x = (float)fbWidth; }
+                    if (clipMax.y > fbHeight) { clipMax.y = (float)fbHeight; }
+                    if (clipMax.x <= clipMin.x || clipMax.y <= clipMin.y) continue;
+                        
+                    drawState.viewport.scissorRects[0] = nvrhi::Rect((int)clipMin.x, (int)clipMax.x, (int)clipMin.y, (int)clipMax.y);
 
                     nvrhi::DrawArguments drawArguments;
                     drawArguments.vertexCount = pCmd->ElemCount;
-                    drawArguments.startIndexLocation = idxOffset;
-                    drawArguments.startVertexLocation = vtxOffset;
+                    drawArguments.startIndexLocation = pCmd->IdxOffset + idxOffset;
+                    drawArguments.startVertexLocation = pCmd->VtxOffset + vtxOffset;
 
                     commandList->setGraphicsState(drawState);
-                    commandList->setPushConstants(invDisplaySize, sizeof(invDisplaySize));
+                    commandList->setPushConstants(&pushConstants, sizeof(PushConstants));
                     commandList->drawIndexed(drawArguments);
                 }
-
-                idxOffset += pCmd->ElemCount;
             }
 
+            idxOffset += cmdList->IdxBuffer.Size;
             vtxOffset += cmdList->VtxBuffer.Size;
         }
 
@@ -242,10 +270,10 @@ struct ImGuiBackend
         return true;
     }
 
-    void BackbufferResizing() { pso = nullptr; }
-
     bool ReallocateBuffer(nvrhi::BufferHandle& buffer, size_t requiredSize, size_t reallocateSize, bool isIndexBuffer)
     {
+        HE_PROFILE_SCOPE_COLOR(HE_PROFILE_IMGUI);
+
         if (buffer == nullptr || size_t(buffer->getDesc().byteSize) < requiredSize)
         {
             nvrhi::BufferDesc desc;
@@ -278,18 +306,11 @@ struct ImGuiBackend
         uint8_t* bytes
     )
     {
-        size_t outRowPitch = 0;
-        nvrhi::TextureSlice desTc = {
-            .x = x,
-            .y = y,
-            .width = w,
-            .height = h,
-        };
+        HE_PROFILE_SCOPE_COLOR(HE_PROFILE_IMGUI);
 
-        nvrhi::TextureSlice srcTc = {
-            .width = w,
-            .height = h,
-        };
+        size_t outRowPitch = 0;
+        nvrhi::TextureSlice desTc = { .x = x, .y = y, .width = w, .height = h };
+        nvrhi::TextureSlice srcTc = { .width = w, .height = h, };
 
         auto desc = texture->getDesc();
         desc.debugName = "StagingTexture";
@@ -315,6 +336,8 @@ struct ImGuiBackend
 
     void UpdateTexture(ImTextureData* tex)
     {
+        HE_PROFILE_SCOPE_COLOR(HE_PROFILE_IMGUI);
+
         if (tex->Status == ImTextureStatus_WantCreate)
         {
             HE_ASSERT(tex->TexID == 0 && tex->BackendUserData == nullptr);
@@ -346,7 +369,7 @@ struct ImGuiBackend
             //HE_INFO("[ImGui] : ImTextureStatus_WantCreate : ({}, {}, {}), {}", tex->UniqueID, tex->Width, tex->Height, (uint64_t)(nvrhi::ITexture*)tex->GetTexID());
         }
 
-        if (tex->Status == ImTextureStatus_WantUpdates || tex->Status == ImTextureStatus_WantCreate)
+        if (tex->Status == ImTextureStatus_WantUpdates)
         {
             //HE_TRACE("[ImGui] : ImTextureStatus_WantUpdates : ({}, {}, {}), {}", tex->UniqueID, tex->Width, tex->Height, (uint64_t)(nvrhi::ITexture*)tex->GetTexID());
             nvrhi::ITexture* texture = (nvrhi::ITexture*)tex->TexID;
@@ -380,6 +403,8 @@ struct ImGuiBackend
 
     nvrhi::IGraphicsPipeline* GetPSO(nvrhi::IFramebuffer* fb)
     {
+        HE_PROFILE_SCOPE_COLOR(HE_PROFILE_IMGUI);
+
         if (pso) return pso;
 
         pso = device->createGraphicsPipeline(basePSODesc, fb);
@@ -396,7 +421,7 @@ struct ImGuiBackend
         nvrhi::BindingSetDesc desc;
 
         desc.bindings = {
-            nvrhi::BindingSetItem::PushConstants(0, sizeof(float) * 2),
+            nvrhi::BindingSetItem::PushConstants(0, sizeof(PushConstants)),
             nvrhi::BindingSetItem::Texture_SRV(0, texture),
             nvrhi::BindingSetItem::Sampler(0, fontSampler)
         };
@@ -405,12 +430,13 @@ struct ImGuiBackend
         HE_ASSERT(binding);
 
         bindingsCache[texture] = binding;
+
         return binding;
     }
 
-    bool UpdateGeometry(nvrhi::ICommandList* commandList)
+    bool UpdateGeometry(ImDrawData* drawData, nvrhi::ICommandList* commandList)
     {
-        ImDrawData* drawData = ImGui::GetDrawData();
+        HE_PROFILE_SCOPE_COLOR(HE_PROFILE_IMGUI);
 
         // create/resize vertex and index buffers if needed
         if (!ReallocateBuffer(vertexBuffer, drawData->TotalVtxCount * sizeof(ImDrawVert), (drawData->TotalVtxCount + 5000) * sizeof(ImDrawVert), false))
@@ -449,17 +475,23 @@ struct ImGuiBackend
 // ImGui Layer
 //////////////////////////////////////////////////////////////////////////
 
-class ImGuiLayer : public Layer
+struct ViewportData
 {
-public:
+    Scope<SwapChain> sc;
+};
+
+struct ImGuiLayer : public Layer
+{
     nvrhi::DeviceHandle device;
-    bool m_BlockEvents = true;
+    bool blockEvents = true;
     ImGuiBackend imGuiBackend;
 
     ImGuiLayer(nvrhi::DeviceHandle pDevice) :device(pDevice) {}
 
     void Theme()
     {
+        HE_PROFILE_SCOPE_COLOR(HE_PROFILE_IMGUI);
+
         ImGuiStyle& style = ImGui::GetStyle();
         ImVec4* colors = ImGui::GetStyle().Colors;
 
@@ -537,6 +569,8 @@ public:
 
     void CreateDefultFont()
     {
+        HE_PROFILE_SCOPE_COLOR(HE_PROFILE_IMGUI);
+
         ImGuiIO& io = ImGui::GetIO();
 
         auto& w = Application::GetWindow();
@@ -592,23 +626,87 @@ public:
 
     virtual void OnAttach() override
     {
-        HE_PROFILE_SCOPE("ImGuiLayer::OnAttach");
+        HE_PROFILE_SCOPE_NC("ImGuiLayer::OnAttach", HE_PROFILE_IMGUI);
 
         ImGui::CreateContext();
 
         auto& w = Application::GetWindow();
 
         ImGuiIO& io = ImGui::GetIO();
+        io.BackendRendererUserData = &imGuiBackend;
+        io.BackendRendererName = "HEImGui-NVRHI";
         io.ConfigFlags |= ImGuiConfigFlags_NavEnableKeyboard;
         io.ConfigFlags |= ImGuiConfigFlags_NavEnableGamepad;
         io.ConfigFlags |= ImGuiConfigFlags_DockingEnable;
         io.ConfigFlags |= ImGuiConfigFlags_ViewportsEnable;
         io.BackendFlags |= ImGuiBackendFlags_RendererHasTextures;
+        io.BackendFlags |= ImGuiBackendFlags_RendererHasVtxOffset;
+        io.BackendFlags |= ImGuiBackendFlags_RendererHasViewports;
+        io.BackendFlags |= ImGuiBackendFlags_PlatformHasViewports;
+        io.ConfigDockingTransparentPayload = true;
+        //io.ConfigViewportsNoDecoration = false;
 
         Theme();
 
-        GLFWwindow* window = static_cast<GLFWwindow*>(w.GetWindowHandle());
+        GLFWwindow* window = static_cast<GLFWwindow*>(w.handle);
         ImGui_ImplGlfw_InitForOther(window, true);
+
+        ImGuiPlatformIO& platform_io = ImGui::GetPlatformIO();
+        if (ImGui::GetIO().ConfigFlags & ImGuiConfigFlags_ViewportsEnable)
+        {
+            IM_ASSERT(platform_io.Platform_CreateVkSurface != nullptr && "Platform needs to setup the CreateVkSurface handler.");
+
+            platform_io.Renderer_CreateWindow = [](ImGuiViewport* viewport) {
+
+                HE_PROFILE_SCOPE_NC("Renderer_CreateWindow", HE_PROFILE_IMGUI);
+
+                ViewportData* data = IM_NEW(ViewportData)();
+                viewport->RendererUserData = data;
+
+                SwapChainDesc swapChainDesc;
+                auto ptr = RHI::GetDeviceManager()->CreateSwapChain(swapChainDesc, viewport->PlatformHandle);
+               
+                std::unique_ptr<SwapChain> scope(ptr);
+                data->sc = std::move(scope);
+            };
+
+            platform_io.Renderer_DestroyWindow = [](ImGuiViewport* viewport) {
+
+                HE_PROFILE_SCOPE_NC("Renderer_DestroyWindow", HE_PROFILE_IMGUI);
+
+                ViewportData* data = (ViewportData*)viewport->RendererUserData;
+                IM_DELETE(data);
+                viewport->RendererUserData = nullptr;
+            };
+
+            platform_io.Renderer_SetWindowSize = [](ImGuiViewport* viewport, ImVec2 size) {
+
+                HE_PROFILE_SCOPE_NC("Renderer_SetWindowSize", HE_PROFILE_IMGUI);
+
+                ViewportData* data = (ViewportData*)viewport->RendererUserData;
+            };
+
+            platform_io.Renderer_RenderWindow = [](ImGuiViewport* viewport, void* backend) {
+
+                HE_PROFILE_SCOPE_NC("Renderer_RenderWindow", HE_PROFILE_IMGUI);
+
+                ViewportData* data = (ViewportData*)viewport->RendererUserData;
+                ImGuiBackend* imGuiBackend = (ImGuiBackend*)ImGui::GetIO().BackendRendererUserData;
+
+                data->sc->UpdateSize();
+                data->sc->BeginFrame();
+
+                imGuiBackend->Render(viewport->DrawData, data->sc->GetCurrentFramebuffer());
+            };
+
+            platform_io.Renderer_SwapBuffers = [](ImGuiViewport* viewport, void*) {
+
+                HE_PROFILE_SCOPE_NC("Renderer_SwapBuffers", HE_PROFILE_IMGUI);
+
+                ViewportData* data = (ViewportData*)viewport->RendererUserData;
+                data->sc->Present();
+            };
+        }
 
         imGuiBackend.Init(device);
 
@@ -617,7 +715,7 @@ public:
 
     virtual void OnDetach() override
     {
-        HE_PROFILE_SCOPE("ImGuiLayer::OnDetach");
+        HE_PROFILE_SCOPE_NC("ImGuiLayer::OnDetach", HE_PROFILE_IMGUI);
 
         for (ImTextureData* tex : ImGui::GetPlatformIO().Textures)
         {
@@ -628,13 +726,14 @@ public:
             }
         }
 
+        ImGui::GetIO().BackendRendererUserData = nullptr;
         ImGui_ImplGlfw_Shutdown();
         ImGui::DestroyContext();
     }
 
     virtual void OnBegin(const FrameInfo& info)
     {
-        HE_PROFILE_SCOPE("ImGuiLayer::OnBegin");
+        HE_PROFILE_SCOPE_NC("ImGuiLayer::OnBegin", HE_PROFILE_IMGUI);
 
         ImGuiIO& io = ImGui::GetIO();
         auto& w = Application::GetWindow();
@@ -647,16 +746,27 @@ public:
     virtual void OnEnd(const FrameInfo& info)
     {
         HE_PROFILE_SCOPE_NC("ImGuiLayer::OnEnd", HE_PROFILE_IMGUI);
+        
+        {
+            HE_PROFILE_SCOPE_NC("ImGui::Render", HE_PROFILE_IMGUI);
+            ImGui::Render();
+        }
 
-        ImGui::Render();
-        imGuiBackend.Render(info.fb);
+        imGuiBackend.Render(ImGui::GetMainViewport()->DrawData, info.fb);
 
         ImGuiIO& io = ImGui::GetIO();
 
         if (io.ConfigFlags & ImGuiConfigFlags_ViewportsEnable)
         {
-            ImGui::UpdatePlatformWindows();
-            ImGui::RenderPlatformWindowsDefault();
+            {
+                HE_PROFILE_SCOPE_NC("ImGui::UpdatePlatformWindows", HE_PROFILE_IMGUI);
+                ImGui::UpdatePlatformWindows();
+            }
+            
+            {
+                HE_PROFILE_SCOPE_NC("ImGui::RenderPlatformWindowsDefault", HE_PROFILE_IMGUI);
+                ImGui::RenderPlatformWindowsDefault();
+            }
         }
     }
 
@@ -664,31 +774,19 @@ public:
     {
         HE_PROFILE_SCOPE_NC("ImGuiLayer::OnEvent", HE_PROFILE_IMGUI);
 
-        if (m_BlockEvents)
+        if (blockEvents)
         {
             ImGuiIO& io = ImGui::GetIO();
-            e.Handled |= e.IsInCategory(EventCategoryMouse) & io.WantCaptureMouse;
-            e.Handled |= e.IsInCategory(EventCategoryKeyboard) & io.WantCaptureKeyboard;
+            e.handled |= e.IsInCategory(EventCategoryMouse) & io.WantCaptureMouse;
+            e.handled |= e.IsInCategory(EventCategoryKeyboard) & io.WantCaptureKeyboard;
         }
 
-        EventDispatcher dispatcher(e);
-
-        dispatcher.Dispatch<WindowResizeEvent>([this](Event& e) {
-
-            imGuiBackend.BackbufferResizing();
-            return false;
-
-            });
-
-        dispatcher.Dispatch<WindowContentScaleEvent>([this](Event& e) {
+        DispatchEvent<WindowContentScaleEvent>(e, [this](WindowContentScaleEvent& e) {
 
             CreateDefultFont();
             return false;
-
-            });
+        });
     }
-
-    void BlockEvents(bool block) { m_BlockEvents = block; }
 };
 
 static ImGuiLayer* g_imGuiLayer = nullptr;
