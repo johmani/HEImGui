@@ -2,6 +2,7 @@
 #include <format>
 
 #include <imgui_internal.h>
+#include <ImExtensions/ImGuizmo.h>
 #include <backends/imgui_impl_glfw.cpp>
 
 #include "Embeded/fonts/fa-regular-400.h"
@@ -741,6 +742,8 @@ struct ImGuiLayer : public Layer
         io.DisplaySize = ImVec2((float)w.GetWidth(), (float)w.GetHeight());
         ImGui_ImplGlfw_NewFrame();
         ImGui::NewFrame();
+
+        ImGuizmo::BeginFrame();
     }
 
     virtual void OnEnd(const FrameInfo& info)
