@@ -41,5 +41,5 @@ Texture2D texture0 : register(t0);
 
 float4 main_ps(PixelInput input) : SV_Target
 {
-    return input.color * texture0.Sample(sampler0, input.uv);
+    return float4(pow(abs(input.color.rgb), 2.2), input.color.a) * texture0.Sample(sampler0, input.uv);
 }
