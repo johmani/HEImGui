@@ -664,7 +664,7 @@ struct ImGuiLayer : public Layer
                 ViewportData* data = IM_NEW(ViewportData)();
                 viewport->RendererUserData = data;
 
-                SwapChainDesc swapChainDesc;
+                SwapChainDesc swapChainDesc = Application::GetWindow().desc.swapChainDesc;
                 auto ptr = RHI::GetDeviceManager()->CreateSwapChain(swapChainDesc, viewport->PlatformHandle);
                
                 std::unique_ptr<SwapChain> scope(ptr);
