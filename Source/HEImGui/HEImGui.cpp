@@ -557,6 +557,7 @@ struct ImGuiLayer : public Layer
 
         style.WindowRounding = 3.0f;
         style.ChildRounding = 3.0f;
+        style.FramePadding = ImVec2(4, 4);
         style.FrameRounding = 2.0f;
         style.PopupRounding = 2.0f;
         style.GrabRounding = 3.0f;
