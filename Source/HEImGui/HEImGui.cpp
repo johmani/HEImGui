@@ -419,6 +419,14 @@ struct ImGuiBackend
         if (bindingsCache.contains(texture))
             return bindingsCache.at(texture);
 
+        for (auto it = bindingsCache.begin(); it != bindingsCache.end();)
+        {
+            if (it->first->GetRefCount() == 1)
+                it = bindingsCache.erase(it);
+            else
+                ++it;
+        }
+
         nvrhi::BindingSetDesc desc;
 
         desc.bindings = {
