@@ -789,8 +789,8 @@ struct ImGuiLayer : public Layer
         if (blockEvents)
         {
             ImGuiIO& io = ImGui::GetIO();
-            e.handled |= e.IsInCategory(EventCategoryMouse) & io.WantCaptureMouse;
-            e.handled |= e.IsInCategory(EventCategoryKeyboard) & io.WantCaptureKeyboard;
+            e.handled |= e.GetCategory() == HE::EventCategory::Keyboard && io.WantCaptureKeyboard;
+            e.handled |= e.GetCategory() == HE::EventCategory::Mouse && io.WantCaptureMouse;
         }
 
         DispatchEvent<WindowContentScaleEvent>(e, [this](WindowContentScaleEvent& e) {
