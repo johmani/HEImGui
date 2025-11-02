@@ -1,4 +1,4 @@
-#include "HydraEngine/Base.h"
+#include "Core/Base.h"
 #include <format>
 
 #include <imgui_internal.h>
@@ -25,11 +25,11 @@
 #include "Embeded/spirv/imgui_main_ps.bin.h"
 #endif
 
-import HE;
+import Core;
 import nvrhi;
 import std;
 
-using namespace HE;
+using namespace Core;
 
 #define HE_PROFILE_IMGUI 0x4300FF
 
@@ -68,7 +68,7 @@ struct ImGuiBackend
 
     bool Init(nvrhi::DeviceHandle pDevice)
     {
-        HE_PROFILE_SCOPE_COLOR(HE_PROFILE_IMGUI);
+        CORE_PROFILE_SCOPE_COLOR(HE_PROFILE_IMGUI);
 
         device = pDevice;
 
@@ -77,7 +77,7 @@ struct ImGuiBackend
         commandList = device->createCommandList(clp);
 
         {
-            HE_PROFILE_SCOPE_NC("Create Shaders", HE_PROFILE_IMGUI);
+            CORE_PROFILE_SCOPE_NC("Create Shaders", HE_PROFILE_IMGUI);
 
             nvrhi::ShaderDesc vsDesc;
             vsDesc.shaderType = nvrhi::ShaderType::Vertex;
@@ -91,12 +91,12 @@ struct ImGuiBackend
 
             vertexShader = RHI::CreateStaticShader(device, STATIC_SHADER(imgui_main_vs), nullptr, vsDesc);
             pixelShader = RHI::CreateStaticShader(device, STATIC_SHADER(imgui_main_ps), nullptr, psDesc);
-            HE_ASSERT(vertexShader);
-            HE_ASSERT(pixelShader);
+            CORE_ASSERT(vertexShader);
+            CORE_ASSERT(pixelShader);
         }
 
         {
-            HE_PROFILE_SCOPE_NC("Create Input Layout", HE_PROFILE_IMGUI);
+            CORE_PROFILE_SCOPE_NC("Create Input Layout", HE_PROFILE_IMGUI);
 
             nvrhi::VertexAttributeDesc vertexAttribLayout[] = {
                 { "POSITION", nvrhi::Format::RG32_FLOAT,  1, 0, offsetof(ImDrawVert,pos), sizeof(ImDrawVert), false },
@@ -108,7 +108,7 @@ struct ImGuiBackend
         }
 
         {
-            HE_PROFILE_SCOPE_NC("CreateBindingLayout and set PSO desc", HE_PROFILE_IMGUI);
+            CORE_PROFILE_SCOPE_NC("CreateBindingLayout and set PSO desc", HE_PROFILE_IMGUI);
 
             nvrhi::BlendState blendState;
             blendState.targets[0].setBlendEnable(true)
@@ -152,7 +152,7 @@ struct ImGuiBackend
         }
 
         {
-            HE_PROFILE_SCOPE("Create Sampler");
+            CORE_PROFILE_SCOPE("Create Sampler");
 
             const auto desc = nvrhi::SamplerDesc()
                 .setAllAddressModes(nvrhi::SamplerAddressMode::Wrap)
@@ -169,9 +169,9 @@ struct ImGuiBackend
 
     bool Render(ImDrawData* drawData, nvrhi::IFramebuffer* framebuffer)
     {
-        HE_PROFILE_SCOPE_COLOR(HE_PROFILE_IMGUI);
+        CORE_PROFILE_SCOPE_COLOR(HE_PROFILE_IMGUI);
 
-        HE_ASSERT(framebuffer);
+        CORE_ASSERT(framebuffer);
 
         for (ImTextureData* tex : ImGui::GetPlatformIO().Textures)
             if (tex->Status != ImTextureStatus_OK)
@@ -236,7 +236,7 @@ struct ImGuiBackend
                 else
                 {
                     drawState.bindings = { GetBindingSet((nvrhi::ITexture*)pCmd->GetTexID())};
-                    HE_ASSERT(drawState.bindings[0]);
+                    CORE_ASSERT(drawState.bindings[0]);
 
                     ImVec2 clipMin((pCmd->ClipRect.x - clipOff.x) * clipScale.x, (pCmd->ClipRect.y - clipOff.y) * clipScale.y);
                     ImVec2 clipMax((pCmd->ClipRect.z - clipOff.x) * clipScale.x, (pCmd->ClipRect.w - clipOff.y) * clipScale.y);
@@ -273,7 +273,7 @@ struct ImGuiBackend
 
     bool ReallocateBuffer(nvrhi::BufferHandle& buffer, size_t requiredSize, size_t reallocateSize, bool isIndexBuffer)
     {
-        HE_PROFILE_SCOPE_COLOR(HE_PROFILE_IMGUI);
+        CORE_PROFILE_SCOPE_COLOR(HE_PROFILE_IMGUI);
 
         if (buffer == nullptr || size_t(buffer->getDesc().byteSize) < requiredSize)
         {
@@ -307,7 +307,7 @@ struct ImGuiBackend
         uint8_t* bytes
     )
     {
-        HE_PROFILE_SCOPE_COLOR(HE_PROFILE_IMGUI);
+        CORE_PROFILE_SCOPE_COLOR(HE_PROFILE_IMGUI);
 
         size_t outRowPitch = 0;
         nvrhi::TextureSlice desTc = { .x = x, .y = y, .width = w, .height = h };
@@ -337,12 +337,12 @@ struct ImGuiBackend
 
     void UpdateTexture(ImTextureData* tex)
     {
-        HE_PROFILE_SCOPE_COLOR(HE_PROFILE_IMGUI);
+        CORE_PROFILE_SCOPE_COLOR(HE_PROFILE_IMGUI);
 
         if (tex->Status == ImTextureStatus_WantCreate)
         {
-            HE_ASSERT(tex->TexID == 0 && tex->BackendUserData == nullptr);
-            HE_ASSERT(tex->Format == ImTextureFormat_RGBA32);
+            CORE_ASSERT(tex->TexID == 0 && tex->BackendUserData == nullptr);
+            CORE_ASSERT(tex->Format == ImTextureFormat_RGBA32);
 
             const void* pixels = tex->GetPixels();
 
@@ -356,7 +356,7 @@ struct ImGuiBackend
             textureDesc.debugName = "ImGui font texture";
 
             nvrhi::ITexture* texture = device->createTexture(textureDesc).Detach();
-            HE_ASSERT(texture);
+            CORE_ASSERT(texture);
 
             auto cl = device->createCommandList();
             cl->open();
@@ -367,14 +367,14 @@ struct ImGuiBackend
             tex->SetTexID(texture);
             tex->Status = ImTextureStatus_OK;
 
-            //HE_INFO("[ImGui] : ImTextureStatus_WantCreate : ({}, {}, {}), {}", tex->UniqueID, tex->Width, tex->Height, (uint64_t)(nvrhi::ITexture*)tex->GetTexID());
+            //LOG_INFO("[ImGui] : ImTextureStatus_WantCreate : ({}, {}, {}), {}", tex->UniqueID, tex->Width, tex->Height, (uint64_t)(nvrhi::ITexture*)tex->GetTexID());
         }
 
         if (tex->Status == ImTextureStatus_WantUpdates)
         {
-            //HE_TRACE("[ImGui] : ImTextureStatus_WantUpdates : ({}, {}, {}), {}", tex->UniqueID, tex->Width, tex->Height, (uint64_t)(nvrhi::ITexture*)tex->GetTexID());
+            //LOG_TRACE("[ImGui] : ImTextureStatus_WantUpdates : ({}, {}, {}), {}", tex->UniqueID, tex->Width, tex->Height, (uint64_t)(nvrhi::ITexture*)tex->GetTexID());
             nvrhi::ITexture* texture = (nvrhi::ITexture*)tex->TexID;
-            HE_ASSERT(texture);
+            CORE_ASSERT(texture);
 
             auto cl = device->createCommandList();
             cl->open();
@@ -392,7 +392,7 @@ struct ImGuiBackend
 
         if (tex->Status == ImTextureStatus_WantDestroy)
         {
-            //HE_ERROR("[ImGui] : ImTextureStatus_WantDestroy : ({}, {}, {}), {}", tex->UniqueID, tex->Width, tex->Height, (uint64_t)(nvrhi::ITexture*)tex->GetTexID());
+            //LOG_ERROR("[ImGui] : ImTextureStatus_WantDestroy : ({}, {}, {}), {}", tex->UniqueID, tex->Width, tex->Height, (uint64_t)(nvrhi::ITexture*)tex->GetTexID());
 
             nvrhi::TextureHandle texture;
             texture.Attach((nvrhi::ITexture*)tex->GetTexID());
@@ -404,12 +404,12 @@ struct ImGuiBackend
 
     nvrhi::IGraphicsPipeline* GetPSO(nvrhi::IFramebuffer* fb)
     {
-        HE_PROFILE_SCOPE_COLOR(HE_PROFILE_IMGUI);
+        CORE_PROFILE_SCOPE_COLOR(HE_PROFILE_IMGUI);
 
         if (pso) return pso;
 
         pso = device->createGraphicsPipeline(basePSODesc, fb);
-        HE_ASSERT(pso);
+        CORE_ASSERT(pso);
 
         return pso;
     }
@@ -436,7 +436,7 @@ struct ImGuiBackend
         };
 
         nvrhi::BindingSetHandle binding = device->createBindingSet(desc, bindingLayout);
-        HE_ASSERT(binding);
+        CORE_ASSERT(binding);
 
         bindingsCache[texture] = binding;
 
@@ -445,7 +445,7 @@ struct ImGuiBackend
 
     bool UpdateGeometry(ImDrawData* drawData, nvrhi::ICommandList* commandList)
     {
-        HE_PROFILE_SCOPE_COLOR(HE_PROFILE_IMGUI);
+        CORE_PROFILE_SCOPE_COLOR(HE_PROFILE_IMGUI);
 
         // create/resize vertex and index buffers if needed
         if (!ReallocateBuffer(vertexBuffer, drawData->TotalVtxCount * sizeof(ImDrawVert), (drawData->TotalVtxCount + 5000) * sizeof(ImDrawVert), false))
@@ -499,7 +499,7 @@ struct ImGuiLayer : public Layer
 
     void Theme()
     {
-        HE_PROFILE_SCOPE_COLOR(HE_PROFILE_IMGUI);
+        CORE_PROFILE_SCOPE_COLOR(HE_PROFILE_IMGUI);
 
         ImGuiStyle& style = ImGui::GetStyle();
         ImVec4* colors = ImGui::GetStyle().Colors;
@@ -579,7 +579,7 @@ struct ImGuiLayer : public Layer
 
     void CreateDefultFont()
     {
-        HE_PROFILE_SCOPE_COLOR(HE_PROFILE_IMGUI);
+        CORE_PROFILE_SCOPE_COLOR(HE_PROFILE_IMGUI);
 
         ImGuiIO& io = ImGui::GetIO();
 
@@ -636,7 +636,7 @@ struct ImGuiLayer : public Layer
 
     virtual void OnAttach() override
     {
-        HE_PROFILE_SCOPE_NC("ImGuiLayer::OnAttach", HE_PROFILE_IMGUI);
+        CORE_PROFILE_SCOPE_NC("ImGuiLayer::OnAttach", HE_PROFILE_IMGUI);
 
         ImGui::CreateContext();
 
@@ -668,7 +668,7 @@ struct ImGuiLayer : public Layer
 
             platform_io.Renderer_CreateWindow = [](ImGuiViewport* viewport) {
 
-                HE_PROFILE_SCOPE_NC("Renderer_CreateWindow", HE_PROFILE_IMGUI);
+                CORE_PROFILE_SCOPE_NC("Renderer_CreateWindow", HE_PROFILE_IMGUI);
 
                 ViewportData* data = IM_NEW(ViewportData)();
                 viewport->RendererUserData = data;
@@ -682,7 +682,7 @@ struct ImGuiLayer : public Layer
 
             platform_io.Renderer_DestroyWindow = [](ImGuiViewport* viewport) {
 
-                HE_PROFILE_SCOPE_NC("Renderer_DestroyWindow", HE_PROFILE_IMGUI);
+                CORE_PROFILE_SCOPE_NC("Renderer_DestroyWindow", HE_PROFILE_IMGUI);
 
                 ViewportData* data = (ViewportData*)viewport->RendererUserData;
                 IM_DELETE(data);
@@ -691,14 +691,14 @@ struct ImGuiLayer : public Layer
 
             platform_io.Renderer_SetWindowSize = [](ImGuiViewport* viewport, ImVec2 size) {
 
-                HE_PROFILE_SCOPE_NC("Renderer_SetWindowSize", HE_PROFILE_IMGUI);
+                CORE_PROFILE_SCOPE_NC("Renderer_SetWindowSize", HE_PROFILE_IMGUI);
 
                 ViewportData* data = (ViewportData*)viewport->RendererUserData;
             };
 
             platform_io.Renderer_RenderWindow = [](ImGuiViewport* viewport, void* backend) {
 
-                HE_PROFILE_SCOPE_NC("Renderer_RenderWindow", HE_PROFILE_IMGUI);
+                CORE_PROFILE_SCOPE_NC("Renderer_RenderWindow", HE_PROFILE_IMGUI);
 
                 ViewportData* data = (ViewportData*)viewport->RendererUserData;
                 ImGuiBackend* imGuiBackend = (ImGuiBackend*)ImGui::GetIO().BackendRendererUserData;
@@ -711,7 +711,7 @@ struct ImGuiLayer : public Layer
 
             platform_io.Renderer_SwapBuffers = [](ImGuiViewport* viewport, void*) {
 
-                HE_PROFILE_SCOPE_NC("Renderer_SwapBuffers", HE_PROFILE_IMGUI);
+                CORE_PROFILE_SCOPE_NC("Renderer_SwapBuffers", HE_PROFILE_IMGUI);
 
                 ViewportData* data = (ViewportData*)viewport->RendererUserData;
                 data->sc->Present();
@@ -725,7 +725,7 @@ struct ImGuiLayer : public Layer
 
     virtual void OnDetach() override
     {
-        HE_PROFILE_SCOPE_NC("ImGuiLayer::OnDetach", HE_PROFILE_IMGUI);
+        CORE_PROFILE_SCOPE_NC("ImGuiLayer::OnDetach", HE_PROFILE_IMGUI);
 
         for (ImTextureData* tex : ImGui::GetPlatformIO().Textures)
         {
@@ -743,7 +743,7 @@ struct ImGuiLayer : public Layer
 
     virtual void OnBegin(const FrameInfo& info)
     {
-        HE_PROFILE_SCOPE_NC("ImGuiLayer::OnBegin", HE_PROFILE_IMGUI);
+        CORE_PROFILE_SCOPE_NC("ImGuiLayer::OnBegin", HE_PROFILE_IMGUI);
 
         ImGuiIO& io = ImGui::GetIO();
         auto& w = Application::GetWindow();
@@ -757,10 +757,10 @@ struct ImGuiLayer : public Layer
 
     virtual void OnEnd(const FrameInfo& info)
     {
-        HE_PROFILE_SCOPE_NC("ImGuiLayer::OnEnd", HE_PROFILE_IMGUI);
+        CORE_PROFILE_SCOPE_NC("ImGuiLayer::OnEnd", HE_PROFILE_IMGUI);
         
         {
-            HE_PROFILE_SCOPE_NC("ImGui::Render", HE_PROFILE_IMGUI);
+            CORE_PROFILE_SCOPE_NC("ImGui::Render", HE_PROFILE_IMGUI);
             ImGui::Render();
         }
 
@@ -771,12 +771,12 @@ struct ImGuiLayer : public Layer
         if (io.ConfigFlags & ImGuiConfigFlags_ViewportsEnable)
         {
             {
-                HE_PROFILE_SCOPE_NC("ImGui::UpdatePlatformWindows", HE_PROFILE_IMGUI);
+                CORE_PROFILE_SCOPE_NC("ImGui::UpdatePlatformWindows", HE_PROFILE_IMGUI);
                 ImGui::UpdatePlatformWindows();
             }
             
             {
-                HE_PROFILE_SCOPE_NC("ImGui::RenderPlatformWindowsDefault", HE_PROFILE_IMGUI);
+                CORE_PROFILE_SCOPE_NC("ImGui::RenderPlatformWindowsDefault", HE_PROFILE_IMGUI);
                 ImGui::RenderPlatformWindowsDefault();
             }
         }
@@ -784,13 +784,13 @@ struct ImGuiLayer : public Layer
 
     virtual void OnEvent(Event& e) override
     {
-        HE_PROFILE_SCOPE_NC("ImGuiLayer::OnEvent", HE_PROFILE_IMGUI);
+        CORE_PROFILE_SCOPE_NC("ImGuiLayer::OnEvent", HE_PROFILE_IMGUI);
 
         if (blockEvents)
         {
             ImGuiIO& io = ImGui::GetIO();
-            e.handled |= e.GetCategory() == HE::EventCategory::Keyboard && io.WantCaptureKeyboard;
-            e.handled |= e.GetCategory() == HE::EventCategory::Mouse && io.WantCaptureMouse;
+            e.handled |= e.GetCategory() == Core::EventCategory::Keyboard && io.WantCaptureKeyboard;
+            e.handled |= e.GetCategory() == Core::EventCategory::Mouse && io.WantCaptureMouse;
         }
 
         DispatchEvent<WindowContentScaleEvent>(e, [this](WindowContentScaleEvent& e) {
