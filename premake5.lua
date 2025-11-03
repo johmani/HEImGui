@@ -1,3 +1,23 @@
+IncludeDir["ImGui"] = "%{HE}/Plugins/HEImGui/imgui"
+
+function Link.Plugin.ImGui()
+
+    buildoptions {
+
+        AddProjCppm(HE, "imgui"),
+    }
+
+    includedirs {
+
+        "%{IncludeDir.ImGui}",
+    }
+
+    links {
+
+        "ImGui",
+    }
+end
+
 group "Plugins/imgui"
     include "imgui"
 
@@ -9,7 +29,7 @@ group "Plugins/imgui"
         targetdir ("Binaries/" .. outputdir)
         objdir ("Binaries/Intermediates/" .. outputdir)
    
-        LinkHydra(includSourceCode, { "glfw" })
+        Link.Runtime.Core()
 
         files
         {
@@ -30,6 +50,7 @@ group "Plugins/imgui"
         links
         {
            "imgui",
+           "glfw",
         }
 
         SetupShaders(
@@ -39,6 +60,5 @@ group "Plugins/imgui"
             "--header"                                      -- args
         )
 
-        SetHydraFilters()
 
 group "Plugins"
