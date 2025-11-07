@@ -2,11 +2,6 @@ IncludeDir["ImGui"] = "%{HE}/Plugins/HEImGui/imgui"
 
 function Link.Plugin.ImGui()
 
-    buildoptions {
-
-        AddProjCppm(HE, "imgui"),
-    }
-
     includedirs {
 
         "%{IncludeDir.ImGui}",
@@ -35,7 +30,6 @@ group "Plugins/imgui"
         {
             "Source/**.h",
             "Source/**.cpp",
-            "Source/**.cppm",
             "Source/**.hlsl",
             "*.lua",
         }

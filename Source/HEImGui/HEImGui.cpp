@@ -1,4 +1,4 @@
-#include "Core/Base.h"
+#include "Core/Core.h"
 #include <format>
 
 #include <imgui_internal.h>
@@ -24,10 +24,6 @@
 #include "Embeded/spirv/imgui_main_vs.bin.h"
 #include "Embeded/spirv/imgui_main_ps.bin.h"
 #endif
-
-import Core;
-import nvrhi;
-import std;
 
 using namespace Core;
 
