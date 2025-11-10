@@ -178,6 +178,7 @@ struct ImGuiBackend
 
         commandList->open();
         commandList->beginMarker("ImGui");
+        BUILTIN_PROFILE_BEGIN(device, commandList, "ImGui Render");
 
         if (!UpdateGeometry(drawData, commandList))
         {
@@ -260,6 +261,7 @@ struct ImGuiBackend
             vtxOffset += cmdList->VtxBuffer.Size;
         }
 
+        BUILTIN_PROFILE_END();
         commandList->endMarker();
         commandList->close();
         device->executeCommandList(commandList);
@@ -630,7 +632,7 @@ struct ImGuiLayer : public Layer
         Theme();
     }
 
-    virtual void OnAttach() override
+    void OnAttach() override
     {
         CORE_PROFILE_SCOPE_NC("ImGuiLayer::OnAttach", HE_PROFILE_IMGUI);
 
@@ -719,7 +721,7 @@ struct ImGuiLayer : public Layer
         CreateDefultFont();
     }
 
-    virtual void OnDetach() override
+    void OnDetach() override
     {
         CORE_PROFILE_SCOPE_NC("ImGuiLayer::OnDetach", HE_PROFILE_IMGUI);
 
@@ -737,7 +739,7 @@ struct ImGuiLayer : public Layer
         ImGui::DestroyContext();
     }
 
-    virtual void OnBegin(const FrameInfo& info)
+    void OnBegin(const FrameInfo& info) override
     {
         CORE_PROFILE_SCOPE_NC("ImGuiLayer::OnBegin", HE_PROFILE_IMGUI);
 
@@ -751,16 +753,15 @@ struct ImGuiLayer : public Layer
         ImGuizmo::BeginFrame();
     }
 
-    virtual void OnEnd(const FrameInfo& info)
+    void OnEnd(const FrameInfo& info) override
     {
         CORE_PROFILE_SCOPE_NC("ImGuiLayer::OnEnd", HE_PROFILE_IMGUI);
-        
-        {
-            CORE_PROFILE_SCOPE_NC("ImGui::Render", HE_PROFILE_IMGUI);
-            ImGui::Render();
-        }
 
-        imGuiBackend.Render(ImGui::GetMainViewport()->DrawData, info.fb);
+        {
+            BUILTIN_PROFILE_CPU("ImGui");
+            ImGui::Render();
+            imGuiBackend.Render(ImGui::GetMainViewport()->DrawData, info.fb);
+        }
 
         ImGuiIO& io = ImGui::GetIO();
 
@@ -778,7 +779,7 @@ struct ImGuiLayer : public Layer
         }
     }
 
-    virtual void OnEvent(Event& e) override
+    void OnEvent(Event& e) override
     {
         CORE_PROFILE_SCOPE_NC("ImGuiLayer::OnEvent", HE_PROFILE_IMGUI);
 
