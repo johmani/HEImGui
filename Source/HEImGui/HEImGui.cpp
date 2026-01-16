@@ -406,7 +406,7 @@ struct ImGuiBackend
 
         if (pso) return pso;
 
-        pso = device->createGraphicsPipeline(basePSODesc, fb);
+        pso = device->createGraphicsPipeline(basePSODesc, fb->getFramebufferInfo());
         CORE_ASSERT(pso);
 
         return pso;
