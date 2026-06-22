@@ -575,61 +575,43 @@ struct ImGuiLayer : public Layer
         style.FrameBorderSize = 0.0f;
     }
 
-    void CreateDefultFont()
+    void CreateDefultFont(ImVec2 scale)
     {
         CORE_PROFILE_SCOPE_COLOR(HE_PROFILE_IMGUI);
 
         ImGuiIO& io = ImGui::GetIO();
 
-        auto& w = Application::GetWindow();
-        auto [sx, sy] = w.GetWindowContentScale();
+        float fontSize = 16.0f;
 
         {
-            float fontSize = 16.0f;
+            ImFontConfig config;
 
-            const ImWchar min_fa = 0xe005;
-            const ImWchar max_fa = 0xf8ff;
+            config.FontDataOwnedByAtlas = false;
+            config.SizePixels = fontSize * scale.x;
+            strcpy_s(config.Name, "OpenSans-Regular + icons");
+            io.FontDefault = io.Fonts->AddFontFromMemoryCompressedTTF((void*)OpenSans_Regular_compressed_data, OpenSans_Regular_compressed_size, 0, &config);
 
-            {
-                ImFontConfig config;
 
-                config.FontDataOwnedByAtlas = false;
-                config.SizePixels = fontSize * sx;
-                strcpy_s(config.Name, "OpenSans-Regular + icons");
-                io.FontDefault = io.Fonts->AddFontFromMemoryCompressedTTF((void*)OpenSans_Regular_compressed_data, OpenSans_Regular_compressed_size, 0, &config);
-
-                {
-                    // Icons Fonts
-                    config.MergeMode = true;
-                    config.GlyphMinAdvanceX = 13.0f;
-                    const ImWchar icon_ranges[] = { min_fa, max_fa, 0 };
-                    io.Fonts->AddFontFromMemoryCompressedTTF((void*)fa_regular_400_compressed_data, fa_regular_400_compressed_size, 0, &config, icon_ranges);
-                    io.Fonts->AddFontFromMemoryCompressedTTF((void*)fa_solid_900_compressed_data, fa_solid_900_compressed_size, 0, &config, icon_ranges);
-                }
-            }
-
-            {
-                ImFontConfig config;
-                config.FontDataOwnedByAtlas = false;
-                config.SizePixels = fontSize * sx;
-                strcpy_s(config.Name, "OpenSans-Bold");
-                io.Fonts->AddFontFromMemoryCompressedTTF((void*)OpenSans_Bold_compressed_data, OpenSans_Bold_compressed_size, 0, &config);
-
-                // Icons Fonts
-                config.MergeMode = true;
-                config.GlyphMinAdvanceX = 13.0f;
-                const ImWchar icon_ranges[] = { min_fa, max_fa, 0 };
-                io.Fonts->AddFontFromMemoryCompressedTTF((void*)fa_regular_400_compressed_data, fa_regular_400_compressed_size, 0, &config, icon_ranges);
-                io.Fonts->AddFontFromMemoryCompressedTTF((void*)fa_solid_900_compressed_data, fa_solid_900_compressed_size, 0, &config, icon_ranges);
-            }
+            // Icons Fonts
+            config.MergeMode = true;
+            config.GlyphMinAdvanceX = 13.0f;
+            io.Fonts->AddFontFromMemoryCompressedTTF((void*)fa_regular_400_compressed_data, fa_regular_400_compressed_size, 0, &config);
+            io.Fonts->AddFontFromMemoryCompressedTTF((void*)fa_solid_900_compressed_data, fa_solid_900_compressed_size, 0, &config);
         }
 
-        io.DisplayFramebufferScale.x = sx;
-        io.DisplayFramebufferScale.y = sy;
+        {
+            ImFontConfig config;
+            config.FontDataOwnedByAtlas = false;
+            config.SizePixels = fontSize * scale.x;
+            strcpy_s(config.Name, "OpenSans-Bold");
+            io.Fonts->AddFontFromMemoryCompressedTTF((void*)OpenSans_Bold_compressed_data, OpenSans_Bold_compressed_size, 0, &config);
 
-        ImGui::GetStyle() = ImGuiStyle();
-        ImGui::GetStyle().ScaleAllSizes(sx);
-        Theme();
+            // Icons Fonts
+            config.MergeMode = true;
+            config.GlyphMinAdvanceX = 13.0f;
+            io.Fonts->AddFontFromMemoryCompressedTTF((void*)fa_regular_400_compressed_data, fa_regular_400_compressed_size, 0, &config);
+            io.Fonts->AddFontFromMemoryCompressedTTF((void*)fa_solid_900_compressed_data, fa_solid_900_compressed_size, 0, &config);
+        }
     }
 
     void OnAttach() override
@@ -639,6 +621,7 @@ struct ImGuiLayer : public Layer
         ImGui::CreateContext();
 
         auto& w = Application::GetWindow();
+        auto [sx, sy] = w.GetWindowContentScale();
 
         ImGuiIO& io = ImGui::GetIO();
         io.BackendRendererUserData = &imGuiBackend;
@@ -653,8 +636,6 @@ struct ImGuiLayer : public Layer
         io.BackendFlags |= ImGuiBackendFlags_PlatformHasViewports;
         io.ConfigDockingTransparentPayload = true;
         //io.ConfigViewportsNoDecoration = false;
-
-        Theme();
 
         GLFWwindow* window = static_cast<GLFWwindow*>(w.handle);
         ImGui_ImplGlfw_InitForOther(window, true);
@@ -718,7 +699,8 @@ struct ImGuiLayer : public Layer
 
         imGuiBackend.Init(device);
 
-        CreateDefultFont();
+        Theme();
+        CreateDefultFont(sx);
     }
 
     void OnDetach() override
@@ -792,22 +774,31 @@ struct ImGuiLayer : public Layer
 
         DispatchEvent<WindowContentScaleEvent>(e, [this](WindowContentScaleEvent& e) {
 
-            CreateDefultFont();
+            ImGuiIO& io = ImGui::GetIO();
+            io.DisplayFramebufferScale = { e.scaleX, e.scaleY };
+
+            io.Fonts->Clear();
+            CreateDefultFont({ e.scaleX, e.scaleY });
+
+            ImGui::GetStyle() = ImGuiStyle();
+            ImGui::GetStyle().ScaleAllSizes(e.scaleX);
+            Theme();
+
             return false;
         });
     }
 };
 
-static ImGuiLayer* g_imGuiLayer = nullptr;
+static ImGuiLayer* s_imGuiLayer = nullptr;
 
 EXPORT void OnModuleLoaded()
 {
-    g_imGuiLayer = new ImGuiLayer(RHI::GetDevice());
-    Application::PushOverlay(g_imGuiLayer);
+    s_imGuiLayer = new ImGuiLayer(RHI::GetDevice());
+    Application::PushOverlay(s_imGuiLayer);
 }
 
 EXPORT void OnModuleShutdown()
 {
-    Application::PopOverlay(g_imGuiLayer);
-    delete g_imGuiLayer;
+    Application::PopOverlay(s_imGuiLayer);
+    delete s_imGuiLayer;
 }
