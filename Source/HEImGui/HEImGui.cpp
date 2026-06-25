@@ -381,7 +381,7 @@ struct ImGuiBackend
             const int upload_y = (tex->Status == ImTextureStatus_WantCreate) ? 0 : tex->UpdateRect.y;
             const int upload_w = (tex->Status == ImTextureStatus_WantCreate) ? tex->Width : tex->UpdateRect.w;
             const int upload_h = (tex->Status == ImTextureStatus_WantCreate) ? tex->Height : tex->UpdateRect.h;
-            UpdateTextureRegion(cl, texture, upload_x, upload_y, upload_w, upload_h, tex->GetPixelsAt(upload_x, upload_y));
+            UpdateTextureRegion(cl, texture, upload_x, upload_y, upload_w, upload_h, (uint8_t*)tex->GetPixelsAt(upload_x, upload_y));
 
             cl->close();
             device->executeCommandList(cl);
@@ -565,6 +565,8 @@ struct ImGuiLayer : public Layer
         style.ChildRounding = 3.0f;
         style.FramePadding = ImVec2(4, 4);
         style.FrameRounding = 2.0f;
+        style.MenuItemRounding = 3.0f;
+        style.SelectableRounding = 3.0f;
         style.PopupRounding = 2.0f;
         style.GrabRounding = 3.0f;
         style.TabRounding = 3.0f;
