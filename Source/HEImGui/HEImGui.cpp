@@ -595,6 +595,7 @@ struct ImGuiLayer : public Layer
             // Icons Fonts
             config.MergeMode = true;
             config.GlyphMinAdvanceX = 13.0f;
+            config.GlyphOffset = ImVec2(1.0f, 1.0f);
             io.Fonts->AddFontFromMemoryCompressedTTF((void*)fa_regular_400_compressed_data, fa_regular_400_compressed_size, 0, &config);
             io.Fonts->AddFontFromMemoryCompressedTTF((void*)fa_solid_900_compressed_data, fa_solid_900_compressed_size, 0, &config);
         }
@@ -609,6 +610,7 @@ struct ImGuiLayer : public Layer
             // Icons Fonts
             config.MergeMode = true;
             config.GlyphMinAdvanceX = 13.0f;
+            config.GlyphOffset = ImVec2(1.0f, 1.0f);
             io.Fonts->AddFontFromMemoryCompressedTTF((void*)fa_regular_400_compressed_data, fa_regular_400_compressed_size, 0, &config);
             io.Fonts->AddFontFromMemoryCompressedTTF((void*)fa_solid_900_compressed_data, fa_solid_900_compressed_size, 0, &config);
         }
