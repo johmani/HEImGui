@@ -21,6 +21,7 @@ group "Plugins/imgui"
         language "C++"
         cppdialect  "C++latest"
         staticruntime "Off"
+        implibdir "%{cfg.objdir}"
         targetdir ("Binaries/" .. outputdir)
         objdir ("Binaries/Intermediates/" .. outputdir)
    
