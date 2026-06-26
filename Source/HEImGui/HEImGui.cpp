@@ -521,6 +521,7 @@ struct ImGuiLayer : public Layer
         colors[ImGuiCol_ScrollbarGrabHovered] = ImVec4(0.429412f, 0.429412f, 0.429412f, 1.0f);
         colors[ImGuiCol_ScrollbarGrabActive] = ImVec4(0.278431f, 0.447059f, 0.701961f, 1.00f);
         colors[ImGuiCol_CheckMark] = ImVec4(0.278431f, 0.447059f, 0.701961f, 1.00f);
+        colors[ImGuiCol_CheckboxSelectedBg] = ImVec4(0.328431f, 0.341961f, 0.337059f, 1.00f);
         colors[ImGuiCol_SliderGrab] = ImVec4(0.278431f, 0.547059f, 0.801961f, 1.00f);
         colors[ImGuiCol_SliderGrabActive] = ImVec4(0.278431f, 0.447059f, 0.701961f, 1.00f);
         colors[ImGuiCol_Button] = ImVec4(0.329412f, 0.329412f, 0.329412f, 1.0f);
@@ -535,6 +536,7 @@ struct ImGuiLayer : public Layer
         colors[ImGuiCol_ResizeGrip] = ImVec4(0.329412f, 0.329412f, 0.329412f, 1.0f);
         colors[ImGuiCol_ResizeGripHovered] = ImVec4(0.429412f, 0.429412f, 0.429412f, 1.0f);
         colors[ImGuiCol_ResizeGripActive] = ImVec4(0.278431f, 0.447059f, 0.701961f, 1.00f);
+        colors[ImGuiCol_InputTextCursor] = ImVec4(1.0f, 1.0f, 1.0f, 1.0f);
         colors[ImGuiCol_Tab] = ImVec4(0.213725f, 0.213725f, 0.213725f, 1.0f);
         colors[ImGuiCol_TabHovered] = ImVec4(0.429412f, 0.429412f, 0.429412f, 1.0f);
         colors[ImGuiCol_TabSelected] = ImVec4(0.288235f, 0.288235f, 0.288235f, 1.00f);
@@ -555,7 +557,10 @@ struct ImGuiLayer : public Layer
         colors[ImGuiCol_TableRowBgAlt] = ImVec4(1.00f, 1.00f, 1.00f, 0.06f);
         colors[ImGuiCol_TextLink] = ImVec4(0.26f, 0.59f, 0.98f, 1.0f);
         colors[ImGuiCol_TextSelectedBg] = ImVec4(0.26f, 0.59f, 0.98f, 0.35f);
+        colors[ImGuiCol_TreeLines] = ImVec4(0.26f, 0.59f, 0.98f, 0.35f);
         colors[ImGuiCol_DragDropTarget] = ImVec4(1.00f, 1.00f, 0.00f, 0.90f);
+        colors[ImGuiCol_DragDropTargetBg] = ImVec4(0.00f, 0.00f, 0.00f, 0.90f);
+        colors[ImGuiCol_UnsavedMarker] = ImVec4(0.26f, 0.59f, 0.98f, 1.00f);
         colors[ImGuiCol_NavCursor] = ImVec4(0.26f, 0.59f, 0.98f, 1.00f);
         colors[ImGuiCol_NavWindowingHighlight] = ImVec4(1.00f, 1.00f, 1.00f, 0.70f);
         colors[ImGuiCol_NavWindowingDimBg] = ImVec4(0.80f, 0.80f, 0.80f, 0.20f);
