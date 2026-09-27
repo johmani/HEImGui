@@ -588,20 +588,32 @@ struct ImGuiLayer : public Layer
 
         ImGuiIO& io = ImGui::GetIO();
 
-        float fontSize = 16.0f;
+        std::string fontFamily = OS::QuerySystemFontFamilyName();
+        OS::FontInfo regular =  OS::QueryFont(fontFamily, 400, false);
+        OS::FontInfo bold = OS::QueryFont(fontFamily, 700, false);
+        float fontSize = regular.xHeight > 0.0f ? OS::FontSizeForXHeight(regular, 8.0f) * scale.x : 16.0f * scale.x;
+
+        LOG_INFO("Font Family : {}", fontFamily);
 
         {
             ImFontConfig config;
-
             config.FontDataOwnedByAtlas = false;
-            config.SizePixels = fontSize * scale.x;
-            strcpy_s(config.Name, "OpenSans-Regular + icons");
-            io.FontDefault = io.Fonts->AddFontFromMemoryCompressedTTF((void*)OpenSans_Regular_compressed_data, OpenSans_Regular_compressed_size, 0, &config);
+            config.SizePixels = fontSize;
 
+            std::string name = (fontFamily.empty() ? "OpenSans" : fontFamily) + "-Regular + icons";
+            strcpy_s(config.Name, name.c_str());
 
-            // Icons Fonts
+            ImFont* font = nullptr;
+            if (!regular.filePath.empty())
+                font = io.Fonts->AddFontFromFileTTF(regular.filePath.c_str(), 0, &config);
+
+            if (!font)
+                font = io.Fonts->AddFontFromMemoryCompressedTTF((void*)OpenSans_Regular_compressed_data, OpenSans_Regular_compressed_size, 0, &config);
+
+            io.FontDefault = font;
+
             config.MergeMode = true;
-            config.GlyphMinAdvanceX = 13.0f;
+            config.GlyphMinAdvanceX = 12.0f;
             config.GlyphOffset = ImVec2(1.0f, 1.0f);
             io.Fonts->AddFontFromMemoryCompressedTTF((void*)fa_regular_400_compressed_data, fa_regular_400_compressed_size, 0, &config);
             io.Fonts->AddFontFromMemoryCompressedTTF((void*)fa_solid_900_compressed_data, fa_solid_900_compressed_size, 0, &config);
@@ -610,13 +622,20 @@ struct ImGuiLayer : public Layer
         {
             ImFontConfig config;
             config.FontDataOwnedByAtlas = false;
-            config.SizePixels = fontSize * scale.x;
-            strcpy_s(config.Name, "OpenSans-Bold");
-            io.Fonts->AddFontFromMemoryCompressedTTF((void*)OpenSans_Bold_compressed_data, OpenSans_Bold_compressed_size, 0, &config);
+            config.SizePixels = fontSize;
 
-            // Icons Fonts
+            std::string name = (fontFamily.empty() ? "OpenSans" : fontFamily) + "-Bold";
+            strcpy_s(config.Name, name.c_str());
+
+            ImFont* font = nullptr;
+            if (!bold.filePath.empty())
+                font = io.Fonts->AddFontFromFileTTF(bold.filePath.c_str(), 0, &config);
+
+            if (!font)
+                font = io.Fonts->AddFontFromMemoryCompressedTTF((void*)OpenSans_Bold_compressed_data, OpenSans_Bold_compressed_size, 0, &config);
+
             config.MergeMode = true;
-            config.GlyphMinAdvanceX = 13.0f;
+            config.GlyphMinAdvanceX = 12.0f;
             config.GlyphOffset = ImVec2(1.0f, 1.0f);
             io.Fonts->AddFontFromMemoryCompressedTTF((void*)fa_regular_400_compressed_data, fa_regular_400_compressed_size, 0, &config);
             io.Fonts->AddFontFromMemoryCompressedTTF((void*)fa_solid_900_compressed_data, fa_solid_900_compressed_size, 0, &config);
