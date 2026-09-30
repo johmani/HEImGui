@@ -599,6 +599,7 @@ struct ImGuiLayer : public Layer
             ImFontConfig config;
             config.FontDataOwnedByAtlas = false;
             config.SizePixels = fontSize;
+            config.RasterizerMultiply = 1.4f;
 
             std::string name = (fontFamily.empty() ? "OpenSans" : fontFamily) + "-Regular + icons";
             strcpy_s(config.Name, name.c_str());
@@ -623,6 +624,7 @@ struct ImGuiLayer : public Layer
             ImFontConfig config;
             config.FontDataOwnedByAtlas = false;
             config.SizePixels = fontSize;
+            config.RasterizerMultiply = 1.4f;
 
             std::string name = (fontFamily.empty() ? "OpenSans" : fontFamily) + "-Bold";
             strcpy_s(config.Name, name.c_str());
