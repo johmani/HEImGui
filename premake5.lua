@@ -13,17 +13,35 @@ function Link.Plugin.ImGui()
     }
 end
 
+function Link.Plugin.ImGuiLayer()
+
+    includedirs {
+
+        "%{HE}/Plugins/HEImGui/Source/HEImGui",
+    }
+
+    links {
+
+        "HEImGui",
+    }
+end
+
 group "Plugins/imgui"
     include "imgui"
 
     project "HEImGui"
-        kind "SharedLib"
         language "C++"
         cppdialect  "C++latest"
-        staticruntime "Off"
         implibdir "%{cfg.objdir}"
-        targetdir ("Binaries/" .. outputdir)
-        objdir ("Binaries/Intermediates/" .. outputdir)
+
+        ProjectKind("SharedLib")
+        filter "kind:SharedLib"
+            targetdir ("Binaries/" .. outputdir)
+            objdir ("Binaries/Intermediates/" .. outputdir)
+        filter "kind:StaticLib"
+            targetdir (libOutputDir)
+            objdir (IntermediatesOutputDir)
+        filter {}
    
         Link.Runtime.Core()
 
@@ -54,6 +72,5 @@ group "Plugins/imgui"
             "%{prj.location}/Source/HEImGui/Embeded",       -- cacheDir
             "--header"                                      -- args
         )
-
 
 group "Plugins"
