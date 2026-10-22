@@ -39,7 +39,17 @@ PixelInput main_vs(VertexInput input)
 sampler sampler0 : register(s0);
 Texture2D texture0 : register(t0);
 
+static const float c_DarkTextBoost = 2.4;
+
 float4 main_ps(PixelInput input) : SV_Target
 {
-    return float4(pow(abs(input.color.rgb), 2.2), input.color.a) * texture0.Sample(sampler0, input.uv);
+    const float4 tex = texture0.Sample(sampler0, input.uv);
+
+    const float coverageIn = saturate(tex.a);
+    const float lum = dot(input.color.rgb, float3(0.299, 0.587, 0.114));
+    const float darkCoverage = 1.0 - pow(1.0 - coverageIn, c_DarkTextBoost);
+    const float coverage = lerp(darkCoverage, coverageIn, lum);
+    const float3 linearColor = pow(abs(input.color.rgb), 2.2) * tex.rgb;
+    
+    return float4(linearColor, input.color.a * coverage);
 }

@@ -380,7 +380,7 @@ namespace ImGuiBackend
         ImDrawVert* vtxDst = bd.vtxBuffer.data();
         ImDrawIdx* idxDst = bd.idxBuffer.data();
 
-        for (int n = 0; n < drawData->CmdListsCount; n++)
+        for (int n = 0; n < drawData->CmdLists.Size; n++)
         {
             const ImDrawList* cmdList = drawData->CmdLists[n];
 
@@ -454,7 +454,7 @@ namespace ImGuiBackend
 
         int vtxOffset = 0;
         int idxOffset = 0;
-        for (int n = 0; n < drawData->CmdListsCount; n++)
+        for (int n = 0; n < drawData->CmdLists.Size; n++)
         {
             const ImDrawList* cmdList = drawData->CmdLists[n];
             for (int i = 0; i < cmdList->CmdBuffer.Size; i++)
@@ -517,7 +517,6 @@ static void Theme()
 {
     CORE_PROFILE_SCOPE_COLOR(HE_PROFILE_IMGUI);
 
-    ImGuiStyle& style = ImGui::GetStyle();
     ImVec4* colors = ImGui::GetStyle().Colors;
 
     colors[ImGuiCol_Text] = ImVec4(1.00f, 1.00f, 1.00f, 1.00f);
@@ -584,6 +583,20 @@ static void Theme()
     colors[ImGuiCol_NavWindowingDimBg] = ImVec4(0.80f, 0.80f, 0.80f, 0.20f);
     colors[ImGuiCol_ModalWindowDimBg] = ImVec4(0.80f, 0.80f, 0.80f, 0.35f);
 
+}
+
+static void ApplyStyleMetrics(float scale)
+{
+    ImGuiStyle& style = ImGui::GetStyle();
+
+    ImVec4 colors[ImGuiCol_COUNT];
+    std::memcpy(colors, style.Colors, sizeof(colors));
+    const float fontSizeBase = style.FontSizeBase;
+    const float fontScaleMain = style.FontScaleMain;
+    const float fontScaleDpi = style.FontScaleDpi;
+
+    style = ImGuiStyle();
+
     style.WindowRounding = 3.0f;
     style.ChildRounding = 3.0f;
     style.FramePadding = ImVec2(4, 4);
@@ -598,9 +611,16 @@ static void Theme()
     style.ScrollbarSize = 10.0f;
     style.ScrollbarRounding = 4.0f;
     style.FrameBorderSize = 0.0f;
+
+    style.ScaleAllSizes(scale);
+
+    std::memcpy(style.Colors, colors, sizeof(colors));
+    style.FontSizeBase = fontSizeBase;
+    style.FontScaleMain = fontScaleMain;
+    style.FontScaleDpi = fontScaleDpi;
 }
 
-static void CreateDefultFont(ImVec2 scale)
+static void CreateDefultFont()
 {
     CORE_PROFILE_SCOPE_COLOR(HE_PROFILE_IMGUI);
 
@@ -609,15 +629,14 @@ static void CreateDefultFont(ImVec2 scale)
     std::string fontFamily = OS::QuerySystemFontFamilyName();
     OS::FontInfo regular =  OS::QueryFont(fontFamily, 400, false);
     OS::FontInfo bold = OS::QueryFont(fontFamily, 700, false);
-    float fontSize = regular.xHeight > 0.0f ? OS::FontSizeForXHeight(regular, 8.0f) * scale.x : 16.0f * scale.x;
+    const float fontSize = regular.xHeight > 0.0f ? OS::FontSizeForXHeight(regular, 8.0f) : 16.0f;
 
-    LOG_INFO("Font Family : {}", fontFamily);
+    LOG_INFO("ImGuiLayer::CreateDefultFont : Font Family : {}", fontFamily);
 
     {
         ImFontConfig config;
         config.FontDataOwnedByAtlas = false;
         config.SizePixels = fontSize;
-        config.RasterizerMultiply = 1.4f;
 
         std::string name = (fontFamily.empty() ? "OpenSans" : fontFamily) + "-Regular + icons";
         strcpy_s(config.Name, name.c_str());
@@ -642,7 +661,6 @@ static void CreateDefultFont(ImVec2 scale)
         ImFontConfig config;
         config.FontDataOwnedByAtlas = false;
         config.SizePixels = fontSize;
-        config.RasterizerMultiply = 1.4f;
 
         std::string name = (fontFamily.empty() ? "OpenSans" : fontFamily) + "-Bold";
         strcpy_s(config.Name, name.c_str());
@@ -660,6 +678,8 @@ static void CreateDefultFont(ImVec2 scale)
         io.Fonts->AddFontFromMemoryCompressedTTF((void*)fa_regular_400_compressed_data, fa_regular_400_compressed_size, 0, &config);
         io.Fonts->AddFontFromMemoryCompressedTTF((void*)fa_solid_900_compressed_data, fa_solid_900_compressed_size, 0, &config);
     }
+
+    ImGui::GetStyle().FontSizeBase = fontSize;
 }
 
 ImGuiLayer::ImGuiLayer(nvrhi::DeviceHandle pDevice) 
@@ -757,8 +777,12 @@ void ImGuiLayer::OnAttach()
 
     ImGuiBackend::Init(*backend, device);
 
+    io.ConfigDpiScaleFonts = true;
+    ImGui::GetStyle().FontScaleDpi = sx;
+
     Theme();
-    CreateDefultFont(sx);
+    ApplyStyleMetrics(sx);
+    CreateDefultFont();
 }
 
 void ImGuiLayer::OnDetach()
@@ -833,15 +857,8 @@ void ImGuiLayer::OnEvent(Event& e)
 
     DispatchEvent<WindowContentScaleEvent>(e, [](WindowContentScaleEvent& e) {
 
-        ImGuiIO& io = ImGui::GetIO();
-        io.DisplayFramebufferScale = { e.scaleX, e.scaleY };
-
-        io.Fonts->Clear();
-        CreateDefultFont({ e.scaleX, e.scaleY });
-
-        ImGui::GetStyle() = ImGuiStyle();
-        ImGui::GetStyle().ScaleAllSizes(e.scaleX);
-        Theme();
+        ImGui::GetStyle().FontScaleDpi = e.scaleX;
+        ApplyStyleMetrics(e.scaleX);
 
         return false;
         });
