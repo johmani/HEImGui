@@ -1,10 +1,5 @@
 #include "Core/Core.h"
 #include "ImGuiLayer.h"
-#include <format>
-#include <optional>
-#include <algorithm>
-#include <unordered_map>
-#include <vector>
 
 #include <imgui_internal.h>
 #include <ImExtensions/ImGuizmo.h>
@@ -694,6 +689,8 @@ void ImGuiLayer::OnAttach()
 {
     CORE_PROFILE_SCOPE_NC("ImGuiLayer::OnAttach", HE_PROFILE_IMGUI);
 
+    const auto& appDesc = Core::Application::GetApplicationDesc();
+
     backend = new ImGuiBackend::Data();
 
     ImGui::CreateContext();
@@ -705,15 +702,24 @@ void ImGuiLayer::OnAttach()
     io.BackendRendererUserData = backend;
     io.BackendRendererName = "HEImGui-NVRHI";
     io.ConfigFlags |= ImGuiConfigFlags_NavEnableKeyboard;
-    io.ConfigFlags |= ImGuiConfigFlags_NavEnableGamepad;
-    io.ConfigFlags |= ImGuiConfigFlags_DockingEnable;
-    io.ConfigFlags |= ImGuiConfigFlags_ViewportsEnable;
-    io.BackendFlags |= ImGuiBackendFlags_RendererHasTextures;
+    
     io.BackendFlags |= ImGuiBackendFlags_RendererHasVtxOffset;
-    io.BackendFlags |= ImGuiBackendFlags_RendererHasViewports;
-    io.BackendFlags |= ImGuiBackendFlags_PlatformHasViewports;
-    io.ConfigDockingTransparentPayload = true;
-    //io.ConfigViewportsNoDecoration = false;
+    io.BackendFlags |= ImGuiBackendFlags_RendererHasTextures;
+
+    if (appDesc.windowDesc.setJoystickCallback)
+    {
+        io.ConfigFlags |= ImGuiConfigFlags_NavEnableGamepad;
+    }
+    
+    if (appDesc.allowMultipleWindows)
+    {
+        io.ConfigFlags |= ImGuiConfigFlags_DockingEnable;
+        io.ConfigFlags |= ImGuiConfigFlags_ViewportsEnable;
+        io.BackendFlags |= ImGuiBackendFlags_RendererHasViewports;
+        io.BackendFlags |= ImGuiBackendFlags_PlatformHasViewports;
+        io.ConfigDockingTransparentPayload = true;
+        //io.ConfigViewportsNoDecoration = false;
+    }
 
     GLFWwindow* window = static_cast<GLFWwindow*>(w.handle);
     ImGui_ImplGlfw_InitForOther(window, true);
@@ -823,7 +829,8 @@ void ImGuiLayer::OnEnd(const FrameInfo& info)
     CORE_PROFILE_SCOPE_NC("ImGuiLayer::OnEnd", HE_PROFILE_IMGUI);
 
     {
-        BUILTIN_PROFILE_CPU("ImGui");
+        CORE_PROFILE_SCOPE_NC("ImGuiLayer::Render", HE_PROFILE_IMGUI);
+
         ImGui::Render();
         ImGuiBackend::Render(*backend, ImGui::GetMainViewport()->DrawData, info.fb);
     }
