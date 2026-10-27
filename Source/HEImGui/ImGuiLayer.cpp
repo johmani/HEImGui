@@ -630,7 +630,6 @@ static void CreateDefultFont()
 
     {
         ImFontConfig config;
-        config.FontDataOwnedByAtlas = false;
         config.SizePixels = fontSize;
 
         std::string name = (fontFamily.empty() ? "OpenSans" : fontFamily) + "-Regular + icons";
@@ -654,7 +653,6 @@ static void CreateDefultFont()
 
     {
         ImFontConfig config;
-        config.FontDataOwnedByAtlas = false;
         config.SizePixels = fontSize;
 
         std::string name = (fontFamily.empty() ? "OpenSans" : fontFamily) + "-Bold";
