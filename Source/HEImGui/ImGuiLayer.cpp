@@ -5,8 +5,6 @@
 #include <ImExtensions/ImGuizmo.h>
 #include <backends/imgui_impl_glfw.cpp>
 
-#include "Embeded/fonts/fa-regular-400.h"
-#include "Embeded/fonts/fa-solid-900.h"
 #include "Embeded/fonts/OpenSans-Bold.h"
 #include "Embeded/fonts/OpenSans-Regular.h"
 
@@ -632,7 +630,7 @@ static void CreateDefultFont()
         ImFontConfig config;
         config.SizePixels = fontSize;
 
-        std::string name = (fontFamily.empty() ? "OpenSans" : fontFamily) + "-Regular + icons";
+        std::string name = (fontFamily.empty() ? "OpenSans" : fontFamily) + "-Regular";
         strcpy_s(config.Name, name.c_str());
 
         ImFont* font = nullptr;
@@ -643,12 +641,6 @@ static void CreateDefultFont()
             font = io.Fonts->AddFontFromMemoryCompressedTTF((void*)OpenSans_Regular_compressed_data, OpenSans_Regular_compressed_size, 0, &config);
 
         io.FontDefault = font;
-
-        config.MergeMode = true;
-        config.GlyphMinAdvanceX = 12.0f;
-        config.GlyphOffset = ImVec2(1.0f, 1.0f);
-        io.Fonts->AddFontFromMemoryCompressedTTF((void*)fa_regular_400_compressed_data, fa_regular_400_compressed_size, 0, &config);
-        io.Fonts->AddFontFromMemoryCompressedTTF((void*)fa_solid_900_compressed_data, fa_solid_900_compressed_size, 0, &config);
     }
 
     {
@@ -664,12 +656,6 @@ static void CreateDefultFont()
 
         if (!font)
             font = io.Fonts->AddFontFromMemoryCompressedTTF((void*)OpenSans_Bold_compressed_data, OpenSans_Bold_compressed_size, 0, &config);
-
-        config.MergeMode = true;
-        config.GlyphMinAdvanceX = 12.0f;
-        config.GlyphOffset = ImVec2(1.0f, 1.0f);
-        io.Fonts->AddFontFromMemoryCompressedTTF((void*)fa_regular_400_compressed_data, fa_regular_400_compressed_size, 0, &config);
-        io.Fonts->AddFontFromMemoryCompressedTTF((void*)fa_solid_900_compressed_data, fa_solid_900_compressed_size, 0, &config);
     }
 
     ImGui::GetStyle().FontSizeBase = fontSize;
