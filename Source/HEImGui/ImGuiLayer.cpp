@@ -28,11 +28,7 @@ using namespace Core;
 #define HE_PROFILE_IMGUI 0x4300FF
 
 //////////////////////////////////////////////////////////////////////////
-// ImGui Backend
-//
-// Internal to this file. All state lives in ImGuiBackend::Data; every function
-// is a static free function that takes it explicitly. Helpers that don't need
-// GPU access are pure (value in, value out).
+// Backend
 //////////////////////////////////////////////////////////////////////////
 
 namespace ImGuiBackend
@@ -66,10 +62,6 @@ namespace ImGuiBackend
         std::vector<ImDrawVert> vtxBuffer;
         std::vector<ImDrawIdx> idxBuffer;
     };
-
-    //////////////////////////////////////////////////////////////////////////
-    // Lifetime
-    //////////////////////////////////////////////////////////////////////////
 
     static bool Init(Data& bd, nvrhi::DeviceHandle device)
     {
@@ -177,10 +169,6 @@ namespace ImGuiBackend
         delete &bd;
     }
 
-    //////////////////////////////////////////////////////////////////////////
-    // Resources
-    //////////////////////////////////////////////////////////////////////////
-
     static bool ReallocateBuffer(Data& bd, nvrhi::BufferHandle& buffer, size_t requiredSize, size_t reallocateSize, bool isIndexBuffer)
     {
         CORE_PROFILE_SCOPE_COLOR(HE_PROFILE_IMGUI);
@@ -249,10 +237,6 @@ namespace ImGuiBackend
 
         return binding;
     }
-
-    //////////////////////////////////////////////////////////////////////////
-    // Textures
-    //////////////////////////////////////////////////////////////////////////
 
     static void UpdateTextureRegion(
         Data& bd,
@@ -351,10 +335,6 @@ namespace ImGuiBackend
         }
     }
 
-    //////////////////////////////////////////////////////////////////////////
-    // Geometry
-    //////////////////////////////////////////////////////////////////////////
-
     static bool UpdateGeometry(Data& bd, const ImDrawData* drawData, nvrhi::ICommandList* commandList)
     {
         CORE_PROFILE_SCOPE_COLOR(HE_PROFILE_IMGUI);
@@ -389,10 +369,6 @@ namespace ImGuiBackend
 
         return true;
     }
-
-    //////////////////////////////////////////////////////////////////////////
-    // Render
-    //////////////////////////////////////////////////////////////////////////
 
     static bool Render(Data& bd, const ImDrawData* drawData, nvrhi::IFramebuffer* framebuffer)
     {
